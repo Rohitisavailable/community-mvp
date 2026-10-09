@@ -1,0 +1,10 @@
+# For the separate Hermes profile named community-project-b.
+mcp_servers:
+  project_knowledge:
+    command: "C:/Users/tfroh/Documents/Codex/2026-10-03/i-wa/outputs/community-mvp/.venv/Scripts/python.exe"
+    args:
+      - "C:/Users/tfroh/Documents/Codex/2026-10-03/i-wa/outputs/community-mvp/mcp_server.py"
+    env:
+      PROJECT_KB_DB: "C:/Users/tfroh/Documents/Codex/2026-10-03/i-wa/outputs/community-mvp/data/projects/project-b/knowledge.sqlite3"
+      PROJECT_KB_NAME: "Project B"
+      OTHER_PROJECT_NAMES: "Project A|Aurora Field Team"

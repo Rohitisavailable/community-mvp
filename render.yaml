@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: community-desk
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SEED_DEMO_DATA
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: REQUIRE_ORIGIN
+        value: "true"
+      - key: AI_ENABLED
+        value: "false"
+      - key: AI_PROVIDER
+        value: backboard
+      - key: COMMUNITY_BACKBOARD_API_KEY
+        sync: false
+      - key: BACKBOARD_LLM_PROVIDER
+        sync: false
+      - key: BACKBOARD_MODEL_NAME
+        sync: false

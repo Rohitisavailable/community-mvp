@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Community Desk · MVP</title>
+  <style>
+    :root { color-scheme:light; --ink:#1a2b38; --muted:#687984; --paper:#f1f4f2; --white:#fff; --line:#d8dfdf; --sea:#126c75; --rust:#c45a35; --navy:#173440; --soft:#e6eeee; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:14px/1.5 "Segoe UI",Arial,sans-serif; }
+    button,input,textarea { font:inherit; }
+    button { cursor:pointer; }
+    .hidden { display:none !important; }
+    #loginView { min-height:100vh; display:grid; grid-template-columns:minmax(260px,1fr) minmax(320px,480px); }
+    .login-aside { background:var(--navy); color:#eef6f5; padding:clamp(30px,7vw,100px); display:flex; flex-direction:column; justify-content:center; }
+    .orbit { width:58px;height:58px;border:1px solid #9fc4c1;border-radius:50%;display:grid;place-items:center;color:#f39b72;font:32px Georgia,serif;margin-bottom:32px; }
+    .login-aside h1 { font:500 clamp(34px,5vw,60px)/1.05 Georgia,serif; margin:0 0 18px; max-width:500px; }
+    .login-aside p { color:#bfd1cf; max-width:430px; font-size:15px; }
+    .login-card { align-self:center; justify-self:center; width:min(100% - 42px,370px); background:white; padding:32px; border:1px solid var(--line); }
+    .login-card h2 { font:500 26px Georgia,serif; margin:0 0 6px; }
+    .login-card p { color:var(--muted); margin:0 0 23px; }
+    label { display:block; font-size:12px; font-weight:600; margin:15px 0 6px; }
+    input,textarea { width:100%; border:1px solid #becaca; border-radius:3px; padding:10px; background:white; color:var(--ink); }
+    input:focus,textarea:focus,button:focus-visible { outline:2px solid #58a0a7; outline-offset:2px; }
+    .button { border:0; background:var(--rust); color:white; border-radius:3px; padding:10px 15px; font-weight:600; }
+    .button:hover { background:#a94325; }
+    .button.secondary { color:var(--ink); background:#e7eeee; }
+    .button.secondary:hover { background:#d7e3e3; }
+    .button.small { padding:7px 10px; font-size:12px; }
+    .error { min-height:20px; color:#a1372a; font-size:12px; margin-top:11px; }
+    #appView { min-height:100vh; display:grid; grid-template-columns:246px minmax(0,1fr); }
+    aside { background:var(--navy); color:white; padding:20px 14px; display:flex; flex-direction:column; }
+    .brand { display:flex; gap:10px; align-items:center; padding:2px 8px 20px; border-bottom:1px solid #42616a; }
+    .brand-mark { width:33px;height:33px;border:1px solid #89b7b7;border-radius:50%;display:grid;place-items:center;color:#f39b72;font:20px Georgia,serif; }
+    .brand strong { font:500 18px Georgia,serif; }
+    .side-label { color:#a7c0c0; font-size:11px; margin:21px 8px 7px; }
+    #projectList { display:grid; gap:5px; }
+    .project-button { text-align:left; border:0; border-radius:3px; padding:10px 9px; color:#e9f2ef; background:transparent; }
+    .project-button:hover,.project-button.active { background:#284c57; }
+    .project-button span { display:block; font-size:12px; color:#b8ceca; }
+    .side-bottom { margin-top:auto; padding:15px 8px 0; border-top:1px solid #42616a; color:#b8ceca; font-size:12px; }
+    .side-bottom button { margin-top:10px; background:transparent;color:white;border:1px solid #67818a;border-radius:3px;padding:7px 10px; }
+    main { min-width:0; display:grid; grid-template-rows:auto 1fr; height:100vh; }
+    header { display:flex; justify-content:space-between; align-items:center; gap:18px; padding:17px 25px; background:white; border-bottom:1px solid var(--line); }
+    header h1 { margin:0; font:500 26px Georgia,serif; }
+    header .meta { color:var(--muted); font-size:12px; margin-top:4px; }
+    .header-actions { display:flex;gap:8px;align-items:center; }
+    .layout { min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 300px; }
+    .chat-panel { min-width:0; display:flex; flex-direction:column; background:#fbfcfb; }
+    #messages { flex:1; overflow:auto; padding:25px clamp(16px,4vw,62px); display:flex; flex-direction:column; gap:16px; }
+    .empty { margin:auto; max-width:500px; text-align:center; color:var(--muted); }
+    .empty .glyph { color:var(--sea); font:40px Georgia,serif; }
+    .empty h2 { font:500 25px Georgia,serif; color:var(--ink); margin:8px 0; }
+    .bubble { max-width:min(720px,94%); padding:11px 14px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .bubble.user { align-self:flex-end; color:white; background:var(--navy); border-radius:13px 13px 2px 13px; }
+    .bubble.agent { align-self:flex-start; background:var(--soft); border-left:3px solid var(--sea); border-radius:2px 12px 12px 12px; }
+    .bubble.notice { align-self:center; background:#fff4e9; color:#81411e; font-size:12px; }
+    .bubble .source { display:block; margin-top:8px; color:#557079; font-size:11px; }
+    .composer { border-top:1px solid var(--line); background:white; padding:14px 20px; }
+    .composer-inner { display:flex; gap:9px; max-width:850px; margin:auto; align-items:flex-end; }
+    #question { min-height:46px; max-height:130px; resize:vertical; }
+    .composer-note { max-width:850px;margin:6px auto 0;color:#7b898e;font-size:11px; }
+    .resources { background:#f0f4f2; border-left:1px solid var(--line); padding:21px 18px; overflow:auto; color:var(--ink); }
+    .resources h2,.resources label { color:var(--ink); }
+    .resource-section { margin-bottom:25px; }
+    .resource-section h2 { font:500 19px Georgia,serif; margin:0 0 5px; }
+    .resource-section p { color:var(--muted); font-size:12px; margin:0 0 11px; }
+    .file-list { display:grid;gap:7px; }
+    .file-item { background:white;border:1px solid var(--line);padding:8px 10px;font-size:12px;overflow-wrap:anywhere; }
+    .file-item small { display:block;color:var(--muted);margin-top:3px; }
+    .file-row { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
+    .file-name { min-width:0;overflow-wrap:anywhere; }
+    .file-remove { flex:0 0 auto;border:1px solid #e2c1b9;border-radius:3px;background:white;color:#a94325;padding:4px 7px;font-size:11px; }
+    .file-remove:hover:not(:disabled) { background:#a94325;color:white; }
+    .file-remove:disabled { cursor:wait;opacity:.6; }
+    .profile-chip { display:inline-block;background:#dcebea;color:#22545d;border-radius:2px;padding:4px 7px;font:11px Consolas,monospace; }
+    .test-box { padding:12px;background:#e5edeb;border-left:3px solid var(--rust);font-size:12px;color:#415760; }
+    .test-box strong { color:var(--ink); }
+    .mobile-projects { display:none; }
+    @media(max-width:900px) { #appView { grid-template-columns:190px minmax(0,1fr); } .layout { grid-template-columns:1fr; } .resources { display:none; } }
+    @media(max-width:650px) { #loginView { grid-template-columns:1fr; } .login-aside { padding:24px; } .orbit { margin:0 0 15px; } .login-aside h1 { font-size:34px; } .login-aside p { margin:0; } #appView { display:flex;flex-direction:column;height:100vh; } aside { padding:8px 12px; } .brand { border:0;padding:2px 3px 8px; } .brand-mark { width:28px;height:28px;font-size:16px; } .brand strong { font-size:16px; } .side-label,.side-bottom { display:none; } #projectList { display:flex;overflow-x:auto;gap:6px; } .project-button { white-space:nowrap;padding:7px 10px; } .project-button span { display:none; } main { min-height:0; flex:1;height:auto; } header { padding:12px 14px; } header h1 { font-size:22px; } .header-actions .secondary { display:none; } #messages { padding:16px 12px; } .composer { padding:10px; } .composer-inner { align-items:stretch; } .composer-inner .button { padding:10px; } }
+  </style>
+</head>
+<body>
+  <section id="loginView">
+    <div class="login-aside"><div class="orbit" aria-hidden="true">↗</div><h1>Community<br>automation, separated.</h1><p>A local prototype for project-scoped support. Each project gets its own files, search index, and Hermes profile mapping.</p></div>
+    <form id="loginForm" class="login-card"><h2>Admin sign in</h2><p>Sign in with the Admin email and password configured for this deployment.</p><label for="email">Email</label><input id="email" type="email" autocomplete="username" placeholder="Admin email" required><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><button class="button" style="width:100%;margin-top:20px">Sign in</button><div id="loginError" class="error" role="status"></div></form>
+  </section>
+  <section id="appView" class="hidden">
+    <aside><div class="brand"><div class="brand-mark" aria-hidden="true">↗</div><strong>Community Desk</strong></div><div class="side-label">TEST PROJECTS</div><nav id="projectList" aria-label="Projects"></nav><div class="side-bottom"><div id="signedIn"></div><button id="logout">Sign out</button></div></aside>
+    <main>
+      <header><div><h1 id="projectTitle">Select a project</h1><div class="meta">Knowledge support · local prototype</div></div><div class="header-actions"><button class="button secondary small" id="newChat">New chat</button></div></header>
+      <div class="layout">
+        <section class="chat-panel"><div id="messages" aria-live="polite"><div class="empty"><div class="glyph">◉</div><h2>Choose a project to begin</h2><p>Project A and Project B have separate SQLite files. Ask about each project's private test code to verify the boundary.</p></div></div><form id="chatForm" class="composer"><div style="width:100%"><div class="composer-inner"><textarea id="question" placeholder="Ask about this project's files…" rows="1" aria-label="Question"></textarea><button class="button" id="send">Ask</button></div><p class="composer-note">Answers use only the selected project's files. If nothing matches, the assistant says it could not find an answer.</p></div></form></section>
+        <aside class="resources"><section class="resource-section"><h2>Project files</h2><p>Text files are indexed only inside this project.</p><form id="uploadForm"><label for="fileInput">Add a .txt or .md file</label><input id="fileInput" type="file" accept=".txt,.md,text/plain,text/markdown"><button class="button small" style="margin-top:8px">Upload file</button></form><div id="fileList" class="file-list" style="margin-top:11px"></div></section>
+          <section class="resource-section"><h2>Hermes namespace</h2><p>The test Telegram bot is bound to Project A's knowledge MCP server. Project B has its own profile mapping.</p><span id="profileName" class="profile-chip">—</span></section>
+          <section class="resource-section"><h2>Create a project</h2><p>Creates a new private knowledge store and a matching Hermes profile name.</p><form id="createForm"><label for="projectName">Project name</label><input id="projectName" placeholder="e.g. Project C" maxlength="100" required><button class="button secondary small" style="margin-top:8px">Create project</button></form></section>
+          <div class="test-box"><strong>Isolation check</strong><br>Ask “What is this project's private test code?” in both projects. Project A should return ALPHA-QUARTZ-731; Project B should return BRAVO-EMBER-942.</div>
+        </aside>
+      </div>
+    </main>
+  </section>
+  <script>
+    const $ = id => document.getElementById(id);
+    let projects = [], activeSlug = null;
+    const sessions = {};
+    function sessionFor(slug) { return sessions[slug] ||= crypto.randomUUID(); }
+    async function api(path, options = {}) {
+      const response = await fetch(path, { credentials:'same-origin', headers:{'Content-Type':'application/json', ...(options.headers||{})}, ...options });
+      let data = {}; try { data = await response.json(); } catch {}
+      if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+      return data;
+    }
+    function showApp(email) { $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); $('signedIn').textContent = `Admin · ${email}`; loadProjects(); }
+    function showLogin() { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); }
+    async function checkLogin() { try { const me = await api('/api/me'); showApp(me.email); } catch { showLogin(); } }
+    async function loadProjects(selectSlug) {
+      const data = await api('/api/projects'); projects = data.projects; const list = $('projectList'); list.replaceChildren();
+      projects.forEach(project => { const b = document.createElement('button'); b.className = 'project-button' + (project.slug===activeSlug?' active':''); b.innerHTML = ''; const name = document.createElement('strong'); name.textContent = project.name; const profile = document.createElement('span'); profile.textContent = `Hermes · ${project.hermes_profile}`; b.append(name, profile); b.onclick = () => selectProject(project.slug); list.append(b); });
+      if (selectSlug && projects.some(p=>p.slug===selectSlug)) selectProject(selectSlug); else if (!activeSlug && projects.length) selectProject(projects[0].slug);
+    }
+    async function loadDocuments(slug) {
+      const box=$('fileList'); box.textContent='Loading files…';
+      try {
+        const d=await api(`/api/projects/${encodeURIComponent(slug)}/documents`); box.replaceChildren();
+        d.documents.forEach(item=>{
+          const card=document.createElement('div'); card.className='file-item';
+          const row=document.createElement('div'); row.className='file-row';
+          const name=document.createElement('strong'); name.className='file-name'; name.textContent=item.filename;
+          const remove=document.createElement('button'); remove.type='button'; remove.className='file-remove'; remove.textContent='Remove'; remove.setAttribute('aria-label',`Remove ${item.filename}`);
+          remove.addEventListener('click',async()=>{
+            const project=projects.find(p=>p.slug===slug);
+            if(!window.confirm(`Remove “${item.filename}” from ${project?.name||'this project'}? It will also be removed from this project’s search index.`)) return;
+            remove.disabled=true;
+            try { await api(`/api/projects/${encodeURIComponent(slug)}/documents/${item.id}`,{method:'DELETE',body:'{}'}); await loadDocuments(slug); }
+            catch(err) { remove.disabled=false; alert(err.message); }
+          });
+          row.append(name,remove);
+          const small=document.createElement('small'); small.textContent='Stored in this project only';
+          card.append(row,small); box.append(card);
+        });
+        if(!d.documents.length) box.textContent='No text files yet.';
+      } catch(err) { box.textContent=err.message; }
+    }
+    async function selectProject(slug) {
+      activeSlug = slug; const project = projects.find(p=>p.slug===slug); if (!project) return;
+      $('projectTitle').textContent = project.name; $('profileName').textContent = project.hermes_profile;
+      [...$('projectList').children].forEach((b,i)=>b.classList.toggle('active',projects[i]?.slug===slug));
+      $('messages').replaceChildren(); const intro = document.createElement('div'); intro.className='empty'; intro.innerHTML='<div class="glyph">◉</div><h2>Ask this project</h2><p>Try “What is this project’s private test code?” Then switch projects and compare the answer.</p>'; $('messages').append(intro);
+      await loadDocuments(slug);
+      $('question').focus();
+    }
+    function bubble(role,text,source='') { $('messages').querySelector('.empty')?.remove(); const el=document.createElement('div'); el.className=`bubble ${role}`; el.textContent=text; if(source){const s=document.createElement('span');s.className='source';s.textContent=source;el.append(s);} $('messages').append(el); $('messages').scrollTop=$('messages').scrollHeight; }
+    $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginError').textContent='';try{const d=await api('/api/login',{method:'POST',body:JSON.stringify({email:$('email').value,password:$('password').value})});showApp(d.email);}catch(err){$('loginError').textContent=err.message;}});
+    $('logout').onclick=async()=>{await api('/api/logout',{method:'POST',body:'{}'});activeSlug=null;showLogin();};
+    $('newChat').onclick=()=>{if(activeSlug){sessions[activeSlug]=crypto.randomUUID();selectProject(activeSlug);}};
+    $('chatForm').addEventListener('submit',async e=>{e.preventDefault();const q=$('question').value.trim();if(!activeSlug||!q)return;bubble('user',q);$('question').value='';$('send').disabled=true;$('send').textContent='Thinking…';try{const d=await api(`/api/projects/${encodeURIComponent(activeSlug)}/chat`,{method:'POST',body:JSON.stringify({question:q,session_id:sessionFor(activeSlug)})});bubble('agent',d.answer,`${d.backend} · Sources: ${d.sources||'none'}`);}catch(err){bubble('notice',err.message);}finally{$('send').disabled=false;$('send').textContent='Ask';$('question').focus();}});
+    $('question').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('chatForm').requestSubmit();}});
+    $('uploadForm').addEventListener('submit',async e=>{e.preventDefault();if(!activeSlug)return;const file=$('fileInput').files[0];if(!file)return;try{const text=await file.text();await api(`/api/projects/${encodeURIComponent(activeSlug)}/documents`,{method:'POST',body:JSON.stringify({filename:file.name,text})});$('fileInput').value='';await loadDocuments(activeSlug);}catch(err){alert(err.message);}});
+    $('createForm').addEventListener('submit',async e=>{e.preventDefault();const name=$('projectName').value.trim();try{const d=await api('/api/projects',{method:'POST',body:JSON.stringify({name})});$('projectName').value='';await loadProjects(d.project.slug);}catch(err){alert(err.message);}});
+    checkLogin();
+  </script>
+</body>
+</html>
