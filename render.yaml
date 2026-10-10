@@ -17,6 +17,8 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: WEB_THREADS
+        value: "8"
       - key: SEED_DEMO_DATA
         value: "false"
       - key: COOKIE_SECURE

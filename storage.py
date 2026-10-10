@@ -35,6 +35,15 @@ class Store:
         db.execute("PRAGMA foreign_keys=ON")
         return db
 
+    def ping(self) -> None:
+        """Check storage availability without running schema migrations."""
+        if self.backend == "postgres":
+            with self._psycopg.connect(self.database_url, connect_timeout=3, sslmode="require") as db:
+                db.execute("SELECT 1")
+            return
+        with self.connect("dashboard") as db:
+            db.execute("SELECT 1")
+
     def is_integrity_error(self, error: Exception) -> bool:
         if self.backend == "postgres":
             return isinstance(error, self._psycopg.IntegrityError)

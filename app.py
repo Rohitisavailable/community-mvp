@@ -496,7 +496,7 @@ def index():
 @app.get("/healthz")
 def healthz():
     try:
-        STORE.ensure_schema()
+        STORE.ping()
         return jsonify({"ok": True, "storage": STORE.backend})
     except Exception:
         app.logger.exception("Health check failed")
@@ -663,7 +663,10 @@ def main() -> None:
     port = int(os.getenv("PORT", os.getenv("COMMUNITY_PORT", "8787")))
     host = os.getenv("COMMUNITY_HOST", "0.0.0.0" if IS_PRODUCTION else "127.0.0.1")
     app.logger.info("Community Desk starting on %s:%s using %s storage", host, port, STORE.backend)
-    serve(app, host=host, port=port, threads=int(os.getenv("WEB_CONCURRENCY", "8")), clear_untrusted_proxy_headers=True)
+    # Render sets WEB_CONCURRENCY for process workers; Waitress runs one process,
+    # so use our own thread setting to avoid reducing the server to one thread.
+    threads = max(2, min(32, int(os.getenv("WEB_THREADS", "8"))))
+    serve(app, host=host, port=port, threads=threads, clear_untrusted_proxy_headers=True)
 
 
 if __name__ == "__main__":
