@@ -17,7 +17,7 @@ mcp = FastMCP("project-knowledge")
 
 @mcp.tool()
 def search_project_knowledge(question: str) -> str:
-    """Search only this Hermes profile's assigned project's uploaded text files."""
+    """Search only this Hermes profile's assigned project's imported sources."""
     question_lower = question.lower()
     if any(name in question_lower for name in OTHER_PROJECT_NAMES):
         return f"This Hermes profile is scoped to {PROJECT_NAME}; I can't access another project's files."
@@ -30,18 +30,25 @@ def search_project_knowledge(question: str) -> str:
     try:
         with sqlite3.connect(PROJECT_DB, timeout=5) as db:
             rows = db.execute(
-                "SELECT filename, snippet(document_search,1,'[',']',' … ',28) "
-                "FROM document_search WHERE document_search MATCH ? ORDER BY bm25(document_search) LIMIT 5",
+                "SELECT d.filename, d.source_type, d.source_url, "
+                "snippet(document_search,1,'[',']',' … ',28) "
+                "FROM document_search JOIN documents AS d ON d.id=document_search.rowid "
+                "WHERE document_search MATCH ? ORDER BY bm25(document_search) LIMIT 5",
                 (match,),
             ).fetchall()
     except (sqlite3.Error, OSError) as exc:
         return f"Project knowledge search failed: {exc}"
     if not rows:
-        return "No matching information was found in this project's files. Do not answer from outside knowledge."
+        return "No matching information was found in this project's sources. Do not answer from outside knowledge."
     meaningful = {term for term in terms if term not in STOP_WORDS}
-    if meaningful and not any(meaningful & set(re.findall(r"[A-Za-z0-9_-]+", excerpt.lower())) for _, excerpt in rows):
-        return "No matching information was found in this project's files. Do not answer from outside knowledge."
-    return "\n\n".join(f"Source file: {filename}\nExcerpt: {excerpt}" for filename, excerpt in rows)
+    if meaningful and not any(meaningful & set(re.findall(r"[A-Za-z0-9_-]+", excerpt.lower())) for _, _, _, excerpt in rows):
+        return "No matching information was found in this project's sources. Do not answer from outside knowledge."
+    return "\n\n".join(
+        f"Source website: {source_url or filename}\nExcerpt: {excerpt}"
+        if source_type == "website"
+        else f"Source file: {filename}\nExcerpt: {excerpt}"
+        for filename, source_type, source_url, excerpt in rows
+    )
 
 
 if __name__ == "__main__":

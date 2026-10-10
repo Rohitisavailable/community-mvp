@@ -47,7 +47,9 @@ class Store:
                 db.execute("REVOKE ALL ON SCHEMA community_desk FROM PUBLIC")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.admins (email TEXT PRIMARY KEY, password_hash TEXT NOT NULL)")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.projects (slug TEXT PRIMARY KEY, name TEXT NOT NULL, hermes_profile TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
-                db.execute("CREATE TABLE IF NOT EXISTS community_desk.documents (id BIGSERIAL PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, filename TEXT NOT NULL, body TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+                db.execute("CREATE TABLE IF NOT EXISTS community_desk.documents (id BIGSERIAL PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, filename TEXT NOT NULL, body TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'file', source_url TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+                db.execute("ALTER TABLE community_desk.documents ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'file'")
+                db.execute("ALTER TABLE community_desk.documents ADD COLUMN IF NOT EXISTS source_url TEXT")
                 db.execute("CREATE INDEX IF NOT EXISTS documents_project_idx ON community_desk.documents(project_slug, id DESC)")
                 db.execute("CREATE INDEX IF NOT EXISTS documents_search_idx ON community_desk.documents USING GIN (to_tsvector('simple', body))")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.messages (id BIGSERIAL PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
@@ -63,11 +65,20 @@ class Store:
         # startup when demo seeding is disabled.
         for row in existing_projects:
             with self.connect(row["slug"]) as db:
+                db.execute("CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, filename TEXT NOT NULL, body TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'file', source_url TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+                columns = {column["name"] for column in db.execute("PRAGMA table_info(documents)").fetchall()}
+                if "source_type" not in columns:
+                    db.execute("ALTER TABLE documents ADD COLUMN source_type TEXT NOT NULL DEFAULT 'file'")
+                if "source_url" not in columns:
+                    db.execute("ALTER TABLE documents ADD COLUMN source_url TEXT")
+                db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS document_search USING fts5(filename UNINDEXED, body, tokenize='unicode61')")
+                db.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
                 db.execute("CREATE TABLE IF NOT EXISTS backboard_threads (session_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL)")
 
     def create_initial_admin(self, email: str, password_hash: str) -> None:
         with self.connect("dashboard") as db:
-            count = db.execute("SELECT COUNT(*) AS n FROM admins").fetchone()["n"]
+            table = "community_desk.admins" if self.backend == "postgres" else "admins"
+            count = db.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
             if not count:
                 if self.backend == "postgres":
                     db.execute("INSERT INTO community_desk.admins(email,password_hash) VALUES(%s,%s)", (email, password_hash))
@@ -104,7 +115,12 @@ class Store:
         with self.connect("dashboard") as db:
             db.execute("INSERT OR IGNORE INTO projects(slug,name,hermes_profile) VALUES(?,?,?)", (slug, name, profile))
         with self.connect(slug) as db:
-            db.execute("CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, filename TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            db.execute("CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, filename TEXT NOT NULL, body TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'file', source_url TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            columns = {column["name"] for column in db.execute("PRAGMA table_info(documents)").fetchall()}
+            if "source_type" not in columns:
+                db.execute("ALTER TABLE documents ADD COLUMN source_type TEXT NOT NULL DEFAULT 'file'")
+            if "source_url" not in columns:
+                db.execute("ALTER TABLE documents ADD COLUMN source_url TEXT")
             db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS document_search USING fts5(filename UNINDEXED, body, tokenize='unicode61')")
             db.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             db.execute("CREATE TABLE IF NOT EXISTS backboard_threads (session_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL)")
@@ -145,23 +161,23 @@ class Store:
     def documents(self, slug: str):
         if self.backend == "postgres":
             with self.connect("dashboard") as db:
-                rows = db.execute("SELECT id,filename,created_at FROM community_desk.documents WHERE project_slug=%s ORDER BY id DESC", (slug,)).fetchall()
+                rows = db.execute("SELECT id,filename,source_type,source_url,created_at FROM community_desk.documents WHERE project_slug=%s ORDER BY id DESC", (slug,)).fetchall()
         else:
             with self.connect(slug) as db:
-                rows = db.execute("SELECT id,filename,created_at FROM documents ORDER BY id DESC").fetchall()
+                rows = db.execute("SELECT id,filename,source_type,source_url,created_at FROM documents ORDER BY id DESC").fetchall()
         return [dict(row) for row in rows]
 
-    def add_document(self, slug: str, filename: str, body: str) -> None:
+    def add_document(self, slug: str, filename: str, body: str, source_type: str = "file", source_url: str | None = None) -> None:
         if self.backend == "postgres":
             with self.connect("dashboard") as db:
-                db.execute("INSERT INTO community_desk.documents(project_slug,filename,body) VALUES(%s,%s,%s)", (slug, filename, body))
+                db.execute("INSERT INTO community_desk.documents(project_slug,filename,body,source_type,source_url) VALUES(%s,%s,%s,%s,%s)", (slug, filename, body, source_type, source_url))
             return
         with self.connect(slug) as db:
             # Remove orphaned FTS rows before SQLite assigns an id. Without
             # this, a previously deleted document can collide with the reused
             # id and fail the upload with an FTS constraint error.
             db.execute("DELETE FROM document_search WHERE rowid NOT IN (SELECT id FROM documents)")
-            cursor = db.execute("INSERT INTO documents(filename,body) VALUES(?,?)", (filename, body))
+            cursor = db.execute("INSERT INTO documents(filename,body,source_type,source_url) VALUES(?,?,?,?)", (filename, body, source_type, source_url))
             db.execute("INSERT INTO document_search(rowid,filename,body) VALUES(?,?,?)", (cursor.lastrowid, filename, body))
 
     def delete_document(self, slug: str, document_id: int) -> bool:
@@ -185,14 +201,14 @@ class Store:
         if self.backend == "postgres":
             query = " OR ".join(terms[:16])
             with self.connect("dashboard") as db:
-                return db.execute("""SELECT filename, ts_headline('simple', body, websearch_to_tsquery('simple', %s), 'MaxFragments=2,MaxWords=30,MinWords=8') AS excerpt
+                return db.execute("""SELECT filename, source_type, source_url, ts_headline('simple', body, websearch_to_tsquery('simple', %s), 'MaxFragments=2,MaxWords=30,MinWords=8') AS excerpt
                     FROM community_desk.documents
                     WHERE project_slug=%s AND to_tsvector('simple', body) @@ websearch_to_tsquery('simple', %s)
                     ORDER BY ts_rank(to_tsvector('simple', body), websearch_to_tsquery('simple', %s)) DESC LIMIT %s""", (query, slug, query, query, limit)).fetchall()
         match = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms[:16])
         try:
             with self.connect(slug) as db:
-                return db.execute("SELECT filename,snippet(document_search,1,'[',']',' … ',24) AS excerpt,bm25(document_search) AS rank FROM document_search WHERE document_search MATCH ? ORDER BY bm25(document_search) LIMIT ?", (match, limit)).fetchall()
+                return db.execute("SELECT d.filename,d.source_type,d.source_url,snippet(document_search,1,'[',']',' … ',24) AS excerpt,bm25(document_search) AS rank FROM document_search JOIN documents AS d ON d.id=document_search.rowid WHERE document_search MATCH ? ORDER BY bm25(document_search) LIMIT ?", (match, limit)).fetchall()
         except sqlite3.OperationalError:
             return []
 

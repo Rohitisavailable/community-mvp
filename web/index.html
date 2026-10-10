@@ -68,6 +68,11 @@
     .file-list { display:grid;gap:7px; }
     .file-item { background:white;border:1px solid var(--line);padding:8px 10px;font-size:12px;overflow-wrap:anywhere; }
     .file-item small { display:block;color:var(--muted);margin-top:3px; }
+    .source-kind { display:inline-block;margin-right:6px;padding:1px 5px;border-radius:2px;background:#e3eeee;color:#31565c;font-size:10px;text-transform:uppercase;letter-spacing:.03em; }
+    .source-status { min-height:18px;color:var(--muted);font-size:11px;margin-top:6px; }
+    .source-status.error { color:#a1372a; }
+    .source-divider { border:0;border-top:1px solid var(--line);margin:17px 0; }
+    #websiteUrls { min-height:72px;resize:vertical;font-size:12px; }
     .file-row { display:flex;align-items:flex-start;justify-content:space-between;gap:10px; }
     .file-name { min-width:0;overflow-wrap:anywhere; }
     .file-remove { flex:0 0 auto;border:1px solid #e2c1b9;border-radius:3px;background:white;color:#a94325;padding:4px 7px;font-size:11px; }
@@ -77,8 +82,8 @@
     .test-box { padding:12px;background:#e5edeb;border-left:3px solid var(--rust);font-size:12px;color:#415760; }
     .test-box strong { color:var(--ink); }
     .mobile-projects { display:none; }
-    @media(max-width:900px) { #appView { grid-template-columns:190px minmax(0,1fr); } .layout { grid-template-columns:1fr; } .resources { display:none; } }
-    @media(max-width:650px) { #loginView { grid-template-columns:1fr; } .login-aside { padding:24px; } .orbit { margin:0 0 15px; } .login-aside h1 { font-size:34px; } .login-aside p { margin:0; } #appView { display:flex;flex-direction:column;height:100vh; } aside { padding:8px 12px; } .brand { border:0;padding:2px 3px 8px; } .brand-mark { width:28px;height:28px;font-size:16px; } .brand strong { font-size:16px; } .side-label,.side-bottom { display:none; } #projectList { display:flex;overflow-x:auto;gap:6px; } .project-button { white-space:nowrap;padding:7px 10px; } .project-button span { display:none; } main { min-height:0; flex:1;height:auto; } header { padding:12px 14px; } header h1 { font-size:22px; } .header-actions .secondary { display:none; } #messages { padding:16px 12px; } .composer { padding:10px; } .composer-inner { align-items:stretch; } .composer-inner .button { padding:10px; } }
+    @media(max-width:900px) { #appView { grid-template-columns:190px minmax(0,1fr); } .layout { grid-template-columns:1fr;grid-template-rows:minmax(360px,1fr) auto; } .resources { display:block;max-height:34vh;border-left:0;border-top:1px solid var(--line);padding:15px 18px; } }
+    @media(max-width:650px) { #loginView { grid-template-columns:1fr; } .login-aside { padding:24px; } .orbit { margin:0 0 15px; } .login-aside h1 { font-size:34px; } .login-aside p { margin:0; } #appView { display:flex;flex-direction:column;height:100vh; } aside { padding:8px 12px; } .brand { border:0;padding:2px 3px 8px; } .brand-mark { width:28px;height:28px;font-size:16px; } .brand strong { font-size:16px; } .side-label,.side-bottom { display:none; } #projectList { display:flex;overflow-x:auto;gap:6px; } .project-button { white-space:nowrap;padding:7px 10px; } .project-button span { display:none; } main { min-height:0; flex:1;height:auto; } header { padding:12px 14px; } header h1 { font-size:22px; } .header-actions .secondary { display:none; } .layout { grid-template-rows:minmax(260px,1fr) auto; } .resources { max-height:38vh;padding:13px; } #messages { padding:16px 12px; } .composer { padding:10px; } .composer-inner { align-items:stretch; } .composer-inner .button { padding:10px; } }
   </style>
 </head>
 <body>
@@ -91,8 +96,12 @@
     <main>
       <header><div><h1 id="projectTitle">Select a project</h1><div class="meta">Knowledge support · local prototype</div></div><div class="header-actions"><button class="button secondary small" id="newChat">New chat</button></div></header>
       <div class="layout">
-        <section class="chat-panel"><div id="messages" aria-live="polite"><div class="empty"><div class="glyph">◉</div><h2>Choose a project to begin</h2><p>Project A and Project B have separate SQLite files. Ask about each project's private test code to verify the boundary.</p></div></div><form id="chatForm" class="composer"><div style="width:100%"><div class="composer-inner"><textarea id="question" placeholder="Ask about this project's files…" rows="1" aria-label="Question"></textarea><button class="button" id="send">Ask</button></div><p class="composer-note">Answers use only the selected project's files. If nothing matches, the assistant says it could not find an answer.</p></div></form></section>
-        <aside class="resources"><section class="resource-section"><h2>Project files</h2><p>Text files are indexed only inside this project.</p><form id="uploadForm"><label for="fileInput">Add a .txt or .md file</label><input id="fileInput" type="file" accept=".txt,.md,text/plain,text/markdown"><button class="button small" style="margin-top:8px">Upload file</button></form><div id="fileList" class="file-list" style="margin-top:11px"></div></section>
+        <section class="chat-panel"><div id="messages" aria-live="polite"><div class="empty"><div class="glyph">◉</div><h2>Choose a project to begin</h2><p>Project A and Project B have separate SQLite files. Ask about each project's private test code to verify the boundary.</p></div></div><form id="chatForm" class="composer"><div style="width:100%"><div class="composer-inner"><textarea id="question" placeholder="Ask about this project's sources…" rows="1" aria-label="Question"></textarea><button class="button" id="send">Ask</button></div><p class="composer-note">Answers use only the selected project's imported sources. If nothing matches, the assistant says it could not find an answer.</p></div></form></section>
+        <aside class="resources"><section class="resource-section"><h2>Knowledge sources</h2><p>Answers search only sources imported into this project. Each source is kept separate by project.</p>
+          <form id="uploadForm"><label for="fileInput">Add multiple .txt or .md files</label><input id="fileInput" type="file" accept=".txt,.md,text/plain,text/markdown" multiple><button class="button small" style="margin-top:8px">Add selected files</button><div id="fileStatus" class="source-status" role="status"></div></form>
+          <hr class="source-divider">
+          <form id="websiteForm"><label for="websiteUrls">Add public website pages</label><textarea id="websiteUrls" placeholder="https://example.com/help&#10;https://example.com/returns" rows="3" aria-describedby="websiteHelp"></textarea><small id="websiteHelp" style="display:block;color:var(--muted);font-size:11px;margin-top:5px">One HTTPS page URL per line, up to 5. Only the pages you enter are imported; this does not crawl linked pages.</small><button class="button small" style="margin-top:8px">Import website pages</button><div id="websiteStatus" class="source-status" role="status"></div></form>
+          <div id="fileList" class="file-list" style="margin-top:11px"></div></section>
           <section class="resource-section"><h2>Hermes namespace</h2><p>The test Telegram bot is bound to Project A's knowledge MCP server. Project B has its own profile mapping.</p><span id="profileName" class="profile-chip">—</span></section>
           <section class="resource-section"><h2>Create a project</h2><p>Creates a new private knowledge store and a matching Hermes profile name.</p><form id="createForm"><label for="projectName">Project name</label><input id="projectName" placeholder="e.g. Project C" maxlength="100" required><button class="button secondary small" style="margin-top:8px">Create project</button></form></section>
           <div class="test-box"><strong>Isolation check</strong><br>Ask “What is this project's private test code?” in both projects. Project A should return ALPHA-QUARTZ-731; Project B should return BRAVO-EMBER-942.</div>
@@ -120,26 +129,26 @@
       if (selectSlug && projects.some(p=>p.slug===selectSlug)) selectProject(selectSlug); else if (!activeSlug && projects.length) selectProject(projects[0].slug);
     }
     async function loadDocuments(slug) {
-      const box=$('fileList'); box.textContent='Loading files…';
+      const box=$('fileList'); box.textContent='Loading sources…';
       try {
         const d=await api(`/api/projects/${encodeURIComponent(slug)}/documents`); box.replaceChildren();
         d.documents.forEach(item=>{
           const card=document.createElement('div'); card.className='file-item';
           const row=document.createElement('div'); row.className='file-row';
-          const name=document.createElement('strong'); name.className='file-name'; name.textContent=item.filename;
-          const remove=document.createElement('button'); remove.type='button'; remove.className='file-remove'; remove.textContent='Remove'; remove.setAttribute('aria-label',`Remove ${item.filename}`);
+          const name=document.createElement('strong'); name.className='file-name'; name.textContent=item.source_type==='website'?(item.source_url||item.filename):item.filename;
+          const remove=document.createElement('button'); remove.type='button'; remove.className='file-remove'; remove.textContent='Remove'; remove.setAttribute('aria-label',`Remove ${name.textContent}`);
           remove.addEventListener('click',async()=>{
             const project=projects.find(p=>p.slug===slug);
-            if(!window.confirm(`Remove “${item.filename}” from ${project?.name||'this project'}? It will also be removed from this project’s search index.`)) return;
+            if(!window.confirm(`Remove “${name.textContent}” from ${project?.name||'this project'}? It will also be removed from this project’s search index.`)) return;
             remove.disabled=true;
             try { await api(`/api/projects/${encodeURIComponent(slug)}/documents/${item.id}`,{method:'DELETE',body:'{}'}); await loadDocuments(slug); }
             catch(err) { remove.disabled=false; alert(err.message); }
           });
           row.append(name,remove);
-          const small=document.createElement('small'); small.textContent='Stored in this project only';
+          const small=document.createElement('small'); const kind=document.createElement('span'); kind.className='source-kind'; kind.textContent=item.source_type==='website'?'Website':'File'; small.append(kind,document.createTextNode('Indexed · this project only'));
           card.append(row,small); box.append(card);
         });
-        if(!d.documents.length) box.textContent='No text files yet.';
+        if(!d.documents.length) box.textContent='No sources added yet.';
       } catch(err) { box.textContent=err.message; }
     }
     async function selectProject(slug) {
@@ -156,7 +165,8 @@
     $('newChat').onclick=()=>{if(activeSlug){sessions[activeSlug]=crypto.randomUUID();selectProject(activeSlug);}};
     $('chatForm').addEventListener('submit',async e=>{e.preventDefault();const q=$('question').value.trim();if(!activeSlug||!q)return;bubble('user',q);$('question').value='';$('send').disabled=true;$('send').textContent='Thinking…';try{const d=await api(`/api/projects/${encodeURIComponent(activeSlug)}/chat`,{method:'POST',body:JSON.stringify({question:q,session_id:sessionFor(activeSlug)})});bubble('agent',d.answer,`${d.backend} · Sources: ${d.sources||'none'}`);}catch(err){bubble('notice',err.message);}finally{$('send').disabled=false;$('send').textContent='Ask';$('question').focus();}});
     $('question').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('chatForm').requestSubmit();}});
-    $('uploadForm').addEventListener('submit',async e=>{e.preventDefault();if(!activeSlug)return;const file=$('fileInput').files[0];if(!file)return;try{const text=await file.text();await api(`/api/projects/${encodeURIComponent(activeSlug)}/documents`,{method:'POST',body:JSON.stringify({filename:file.name,text})});$('fileInput').value='';await loadDocuments(activeSlug);}catch(err){alert(err.message);}});
+    $('uploadForm').addEventListener('submit',async e=>{e.preventDefault();if(!activeSlug)return;const files=Array.from($('fileInput').files);const status=$('fileStatus');status.className='source-status';if(!files.length){status.textContent='Choose one or more .txt or .md files first.';return;}let added=0;const errors=[];for(const file of files){try{const text=await file.text();await api(`/api/projects/${encodeURIComponent(activeSlug)}/documents`,{method:'POST',body:JSON.stringify({filename:file.name,text})});added++;}catch(err){errors.push(`${file.name}: ${err.message}`);}}$('fileInput').value='';status.classList.toggle('error',errors.length>0);status.textContent=[added?`${added} file${added===1?'':'s'} added.`:'',...errors].filter(Boolean).join(' ');await loadDocuments(activeSlug);});
+    $('websiteForm').addEventListener('submit',async e=>{e.preventDefault();if(!activeSlug)return;const status=$('websiteStatus');status.className='source-status';const urls=$('websiteUrls').value.split(/\r?\n/).map(url=>url.trim()).filter(Boolean);if(!urls.length){status.textContent='Enter at least one HTTPS page URL.';return;}if(urls.length>5){status.classList.add('error');status.textContent='Add no more than 5 URLs at a time.';return;}status.textContent='Importing pages…';try{const d=await api(`/api/projects/${encodeURIComponent(activeSlug)}/websites`,{method:'POST',body:JSON.stringify({urls})});const added=d.results.filter(item=>item.ok).length;const errors=d.results.filter(item=>!item.ok).map(item=>`${item.url}: ${item.error}`);status.classList.toggle('error',errors.length>0);status.textContent=[added?`${added} page${added===1?'':'s'} imported.`:'',...errors].filter(Boolean).join(' ')||'No pages imported.';if(added)$('websiteUrls').value='';await loadDocuments(activeSlug);}catch(err){status.classList.add('error');status.textContent=err.message;}});
     $('createForm').addEventListener('submit',async e=>{e.preventDefault();const name=$('projectName').value.trim();try{const d=await api('/api/projects',{method:'POST',body:JSON.stringify({name})});$('projectName').value='';await loadProjects(d.project.slug);}catch(err){alert(err.message);}});
     checkLogin();
   </script>
