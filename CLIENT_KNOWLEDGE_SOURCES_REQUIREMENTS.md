@@ -1,15 +1,15 @@
 # Client Requirements: Knowledge Sources and Grounded Answers
 
-**Status:** Point 1 implementation is in the working tree; runtime and acceptance checks have not been run.
+**Status:** Project-scoped file and website ingestion, project-first answers with optional Backboard web-search fallback, and an optional Telegram webhook are implemented in the working tree. This behavior has not been runtime-tested or deployed. Web fallback requires `WEB_SEARCH_ENABLED=true`, the Backboard provider, and valid provider credentials/model settings. Telegram requires its own webhook bot token; do not reuse a token currently polling through Hermes.
 **Reference product:** [Bonfires](https://www.bonfires.ai/) as inspiration for a unified knowledge-source experience. This is a focused MVP requirement, not a request to clone Bonfires.
 
 ## Business objective
 
-Automate customer-care responses across the web dashboard and connected Telegram/Discord bots so the client does not need to retain a dedicated customer-care employee for routine questions. Answers must remain grounded in the client's configured sources. When those sources do not support an answer, the bot should clearly say it cannot answer from the available information instead of guessing or searching Google. Define separately what should happen for exceptional cases that still need a person or an operational action.
+Automate customer-care responses across the web dashboard and connected Telegram/Discord bots so the client does not need to retain a dedicated customer-care employee for routine questions. Prefer the client's configured project sources. If they do not answer, the bot may use general internet search when enabled, clearly label those facts as web results, and cite the URLs. Never use uncited model memory as a substitute. Define separately what should happen for exceptional cases that still need a person or an operational action.
 
 ## Conversation style
 
-The AI should chat naturally and warmly, like a helpful customer-care representative: understand follow-up questions, use the conversation context, and respond clearly without sounding like a rigid template. Do not add unsolicited AI disclaimers to ordinary replies. A natural tone must not weaken the source-only rule; unsupported details still require an honest “I couldn't find that in the available information” response. If a customer directly asks whether they are speaking to AI or a person, answer truthfully and do not impersonate a human employee.
+The AI should chat naturally and warmly, like a helpful customer-care representative: understand follow-up questions, use the conversation context, and respond clearly without sounding like a rigid template. Do not add unsolicited AI disclaimers to ordinary replies. A natural tone must not weaken the evidence rule: use uploaded sources first, then cite internet URLs when web fallback is used; if neither supports an answer, say so. If a customer directly asks whether they are speaking to AI or a person, answer truthfully and do not impersonate a human employee.
 
 ## 1. Add knowledge sources to a project
 
@@ -24,21 +24,20 @@ Imported content must be indexed and stored within the selected project’s name
 
 For the initial MVP, fetch the website URL explicitly provided by the admin. Whole-site crawling, private GitHub access, continuous sync, and other connectors are outside this requirement until separately approved. Confirm required file formats before promising anything beyond the existing `.txt` and `.md` support.
 
-## 2. Answer only from the project’s sources
+## 2. Prefer project sources, with cited internet fallback
 
-The AI must ground answers exclusively in successfully processed files and website pages added to the currently selected project.
+The AI must first search successfully processed files and website pages added to the currently selected project. If those sources do not contain enough information, the configured web-search provider may answer from public internet pages.
 
-- Do not use Google, general web search, or other unconfigured external search as an answer fallback.
 - Do not fill gaps with unsupported model knowledge or guesses.
-- Cite the source used: the filename for an uploaded file, or the imported URL for a website page.
-- If the project’s sources do not contain the answer, say so plainly and invite the user to add the relevant source.
+- Clearly distinguish project-source facts from web-search facts. Cite filenames/imported URLs for project material and direct page URLs for web results.
+- If web search is disabled or neither project sources nor cited web results contain the answer, say so plainly and invite the user to add the relevant source.
 - Keep every retrieval scoped to the active project.
 
 ### Source filter between knowledge and results
 
-Add a source-selection/filter step between the project's stored sources and the answer. The filter should choose only relevant, imported project sources before any AI provider receives context. If the question clearly names a source—for example, a Zomato page—and that source is available, restrict retrieval to that source. The answer must come from that Zomato page's imported content, not Google or general knowledge about Zomato. Show the source used on the result page. If the named source has no supporting information, abstain rather than switching to another website or external search.
+Add a source-selection/filter step between the project's stored sources and the answer. The filter should choose relevant, imported project sources before any AI provider receives context. If the question clearly names a source—for example, a Zomato page—and that source is available, prioritize that imported content and show its citation. If it does not contain the answer, web fallback is allowed under the latest client clarification but must be labeled as web material and cite its direct URLs.
 
-For questions without a clear named source, search relevant sources within the active project only and show which sources supported the answer. An explicit source selector in the UI (for example, “All project sources” or one selected source) can make this behavior inspectable; the client has not specified whether that selector must be user-controlled or can be automatic.
+For questions without a clear named source, search relevant sources within the active project first, then use web search only when enabled and needed. Show whether each cited source is project content or a web result. An explicit source selector in the UI (for example, “All project sources” or one selected source) can make this behavior inspectable; the client has not specified whether that selector must be user-controlled or can be automatic.
 
 ## 3. Multiple AI providers working together
 
@@ -46,8 +45,8 @@ The client also wants multiple AI providers—such as Claude, Gemini, and GPT—
 
 - Add provider adapters so enabled providers can be called through a common interface.
 - For each question, retrieve evidence once from the active project's sources, then give the same evidence and question to each enabled provider.
-- Combine the providers' responses into one final answer. The combined answer must remain grounded only in the supplied project evidence and cite its source filenames/URLs.
-- Do not allow a provider to use Google/general web search or unsupported outside knowledge as a fallback.
+- Combine the providers' responses into one final answer. Use supplied project evidence first; if a provider uses web search as fallback, label those claims and cite their direct URLs.
+- Do not allow a provider to answer from unsupported outside knowledge without citations.
 - Keep provider API keys server-side in environment variables or an equivalent secrets manager; never return or log their values in the dashboard.
 - Show which providers are enabled and report provider failures clearly. Do not silently present one provider's output as a complete multi-provider result.
 
@@ -58,7 +57,7 @@ The client also wants multiple AI providers—such as Claude, Gemini, and GPT—
 Provide a documented HTTPS API that lets an external bot use the same project knowledge Q&A as the web dashboard. A suitable initial shape is `POST /api/v1/projects/{project_id}/ask`; treat this as a proposed route name until the API contract is finalized.
 
 - The caller sends a question and receives the grounded answer plus source citations in a predictable JSON response.
-- The API uses the same per-project source filter, source-only answer rules, and multi-provider behavior as the web dashboard.
+- The API uses the same per-project source filter, evidence-first/web-fallback rules, and multi-provider behavior as the web dashboard.
 - Authenticate bot callers with revocable, project-scoped API credentials. A bot credential must not query another project by changing the project ID.
 - Keep bot credentials server-side in the bot's secret configuration; never put them in a public web page, repository, or chat message.
 - Document the base URL, authentication header, request/response schema, errors, and a Telegram/Discord integration example.
@@ -69,14 +68,14 @@ Provide a documented HTTPS API that lets an external bot use the same project kn
 1. Upload at least two files together; verify each appears as its own source and is retrievable.
 2. Add an admin-provided website URL; verify its imported content is retrievable and the answer cites that URL.
 3. Ask about a fact in an uploaded file; verify the answer cites the filename.
-4. Ask a question whose answer is absent from all project sources; verify the AI abstains instead of guessing or searching Google.
-5. Verify answering does not issue Google or general external-search requests.
+4. Ask a question whose answer is absent from all project sources; with web fallback enabled, verify the answer cites web URLs; with it disabled, verify the AI abstains.
+5. Verify web search is used only when enabled and that the answer identifies/cites web results rather than presenting them as uploaded sources.
 6. Add a source to Project A and ask about its unique content from Project B; verify Project B does not reveal it.
 7. Remove a source and verify it is no longer used in subsequent answers.
 8. Enable at least two providers and verify they receive the same question and project-scoped evidence, then contribute to one cited final answer.
 9. Make one provider unavailable and verify the UI clearly reports degraded/partial operation rather than claiming every provider contributed.
 10. Import a Zomato page containing a known order fact; ask about that fact with “Zomato” in the question and verify only the Zomato source is passed to providers and cited in the result.
-11. Ask about a fact absent from the imported Zomato page but available from general web search; verify the app abstains and does not use Google or another source as a fallback.
+11. Ask about a fact absent from the imported Zomato page but available from general web search; verify the result is clearly labeled as web fallback and includes direct web citations.
 12. Call the documented API using a credential scoped to Project A; verify it returns a source-cited answer from Project A.
 13. Try that Project A credential against Project B; verify access is denied and no Project B data is returned.
 14. Use the API from a Telegram or Discord bot and verify it produces the same project-scoped, cited behavior as the dashboard.
@@ -98,4 +97,4 @@ Provide a documented HTTPS API that lets an external bot use the same project kn
 
 ## 7. Scope boundary
 
-This note captures the clarified requirements: multi-source project knowledge ingestion, source-only answers, natural customer-care conversation, multiple AI providers contributing together, and a secure API for external bots. It does not authorize implementation of broader Bonfires capabilities such as knowledge graphs, background group-chat ingestion, or automatic site crawling.
+This note captures the latest clarified requirements: multi-source project knowledge ingestion, project-first answers with cited general web fallback, natural customer-care conversation, multiple AI providers contributing together, and a secure API for external bots. It does not authorize implementation of broader Bonfires capabilities such as knowledge graphs, background group-chat ingestion, or automatic site crawling.

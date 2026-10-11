@@ -7,8 +7,9 @@ A local-first prototype for Admin login, project-scoped text knowledge, and a He
 - One Admin account and a web dashboard (localhost in development; configurable for hosted deployment).
 - Project A and Project B, each with its own SQLite database and full-text search index.
 - `.txt` and `.md` uploads, stored and indexed only in the selected project's database.
-- A project-aware chat. Retrieval uses only the selected project's database; generation can use Backboard, the project Hermes profile, or Ollama. If no model answers, it returns matching local excerpts with their filenames.
-- Optional Backboard generation for local or hosted use. Project retrieval stays in Community Desk, and Backboard memory/web search are disabled so its model receives only the selected project's retrieved excerpts and prompt.
+- A project-aware chat. Retrieval always stays inside the selected project's database. Generation can use Backboard, the project Hermes profile, or Ollama; Backboard can also use its optional web-search fallback when project sources do not answer.
+- Optional Backboard web search, enabled with `WEB_SEARCH_ENABLED=true`. The model is instructed to prefer project evidence and label web answers with direct URLs. Web search adds latency; check Backboard/provider billing before enabling it.
+- Optional Telegram webhook integration: bind each group/private chat to one project, answer grounded questions with a typing indicator, and let configured admins add `.txt`/`.md` files or explicit HTTPS pages.
 - An MCP search tool with a fixed database path per Hermes profile. The default profile's example config is bound to Project A; the separate Project B profile config is bound to Project B.
 
 Local development uses SQLite and your existing local Hermes/Ollama setup. Hosted mode uses Supabase Postgres for persistent project data and Waitress to serve the Flask app. The hosted prototype is Admin-only; it does not expose project answers to anonymous visitors.
@@ -45,9 +46,10 @@ AI_PROVIDER=backboard
 COMMUNITY_BACKBOARD_API_KEY=paste-your-server-side-key-here
 BACKBOARD_LLM_PROVIDER=your-provider-name
 BACKBOARD_MODEL_NAME=your-exact-model-id
+WEB_SEARCH_ENABLED=true
 ```
 
-Choose the provider and exact model ID from Backboard and check its pricing first. Both model settings are required to prevent accidentally using Backboard's API default. Keep this key in `.env` only for local development; `.env` is ignored by Git. Restart the app after changing environment values. On a successful answer the chat backend label should start with `Backboard (...)`; `local project index fallback` means Backboard did not return an answer.
+Choose the provider and exact model ID from Backboard and check its pricing first. Both model settings are required to prevent accidentally using Backboard's API default. Set `WEB_SEARCH_ENABLED=true` to allow public web fallback when project evidence is missing or incomplete; Backboard's `Auto` mode decides when to search and adds latency. Keep this key in `.env` only for local development; `.env` is ignored by Git. Restart the app after changing environment values. On a successful answer the chat backend label should start with `Backboard (...)`; web answers must include URLs in the answer and appear as `Web:` sources.
 
 Then start Ollama (if you want model-generated responses) and run:
 
@@ -85,6 +87,10 @@ Your existing Telegram gateway is on the Hermes `default` profile, so the provid
 4. Restart the Hermes gateway and send a question in the Telegram chat where your existing bot is enabled. Test with “What is Project A's private test code?”
 
 The default profile's existing Telegram token/chat configuration is not copied or changed by this prototype. If the gateway reports an MCP spawn error, verify that `.venv` setup finished and the Python executable and project paths in the YAML still exist. Consult Hermes' [profiles documentation](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/profiles.md) and [MCP documentation](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/mcp.md) for the installed version's exact config layout.
+
+## Run the Community Desk Telegram bot
+
+For a webhook-backed Telegram bot that uses the hosted project's source store (rather than the local Hermes MCP profile), see [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md). It supports multiple project-bound chats, source upload/link commands, and group-safe `/ask` messages. A linked discussion group is required for channel-audience questions; channels themselves are broadcast-only in this MVP.
 
 ## Connect a separate Hermes profile to Project B
 

@@ -64,10 +64,12 @@ class Store:
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.messages (id BIGSERIAL PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
                 db.execute("CREATE INDEX IF NOT EXISTS messages_session_idx ON community_desk.messages(project_slug, session_id, id)")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.backboard_threads (project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, session_id TEXT NOT NULL, thread_id TEXT NOT NULL, PRIMARY KEY(project_slug, session_id))")
+                db.execute("CREATE TABLE IF NOT EXISTS community_desk.telegram_chats (chat_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, chat_type TEXT NOT NULL, chat_title TEXT NOT NULL DEFAULT '', bound_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
             return
         with self.connect("dashboard") as db:
             db.execute("CREATE TABLE IF NOT EXISTS admins (email TEXT PRIMARY KEY, password_hash TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS projects (slug TEXT PRIMARY KEY, name TEXT NOT NULL, hermes_profile TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            db.execute("CREATE TABLE IF NOT EXISTS telegram_chats (chat_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE, chat_type TEXT NOT NULL, chat_title TEXT NOT NULL DEFAULT '', bound_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             existing_projects = db.execute("SELECT slug FROM projects").fetchall()
         # Add tables introduced by newer app versions to existing local project
         # databases too. Older projects do not pass through ensure_project() at
@@ -113,6 +115,26 @@ class Store:
             with self.connect("dashboard") as db:
                 row = db.execute("SELECT slug,name,hermes_profile,created_at FROM projects WHERE slug=?", (slug,)).fetchone()
         return dict(row) if row else None
+
+    def bind_telegram_chat(self, chat_id: str, slug: str, chat_type: str, chat_title: str, bound_by: str) -> None:
+        if self.backend == "postgres":
+            with self.connect("dashboard") as db:
+                db.execute("INSERT INTO community_desk.telegram_chats(chat_id,project_slug,chat_type,chat_title,bound_by) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(chat_id) DO UPDATE SET project_slug=EXCLUDED.project_slug, chat_type=EXCLUDED.chat_type, chat_title=EXCLUDED.chat_title, bound_by=EXCLUDED.bound_by", (chat_id, slug, chat_type, chat_title, bound_by))
+            return
+        with self.connect("dashboard") as db:
+            db.execute("INSERT INTO telegram_chats(chat_id,project_slug,chat_type,chat_title,bound_by) VALUES(?,?,?,?,?) ON CONFLICT(chat_id) DO UPDATE SET project_slug=excluded.project_slug, chat_type=excluded.chat_type, chat_title=excluded.chat_title, bound_by=excluded.bound_by", (chat_id, slug, chat_type, chat_title, bound_by))
+
+    def telegram_project(self, chat_id: str):
+        table = "community_desk.telegram_chats" if self.backend == "postgres" else "telegram_chats"
+        with self.connect("dashboard") as db:
+            row = db.execute(f"SELECT project_slug,chat_type,chat_title FROM {table} WHERE chat_id={('%s' if self.backend == 'postgres' else '?')}", (chat_id,)).fetchone()
+        return dict(row) if row else None
+
+    def unbind_telegram_chat(self, chat_id: str) -> None:
+        table = "community_desk.telegram_chats" if self.backend == "postgres" else "telegram_chats"
+        marker = "%s" if self.backend == "postgres" else "?"
+        with self.connect("dashboard") as db:
+            db.execute(f"DELETE FROM {table} WHERE chat_id={marker}", (chat_id,))
 
     def ensure_project(self, slug: str, name: str, profile: str) -> None:
         if self.backend == "postgres":

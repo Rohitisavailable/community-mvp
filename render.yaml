@@ -26,7 +26,7 @@ services:
       - key: REQUIRE_ORIGIN
         value: "true"
       - key: AI_ENABLED
-        value: "false"
+        value: "true"
       - key: AI_PROVIDER
         value: backboard
       - key: COMMUNITY_BACKBOARD_API_KEY
@@ -34,4 +34,12 @@ services:
       - key: BACKBOARD_LLM_PROVIDER
         sync: false
       - key: BACKBOARD_MODEL_NAME
+        sync: false
+      - key: WEB_SEARCH_ENABLED
+        value: "true"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_ADMIN_USER_IDS
         sync: false

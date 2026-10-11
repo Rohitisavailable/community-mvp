@@ -96,13 +96,14 @@
     <main>
       <header><div><h1 id="projectTitle">Select a project</h1><div class="meta">Knowledge support · local prototype</div></div><div class="header-actions"><button class="button secondary small" id="newChat">New chat</button></div></header>
       <div class="layout">
-        <section class="chat-panel"><div id="messages" aria-live="polite"><div class="empty"><div class="glyph">◉</div><h2>Choose a project to begin</h2><p>Project A and Project B have separate SQLite files. Ask about each project's private test code to verify the boundary.</p></div></div><form id="chatForm" class="composer"><div style="width:100%"><div class="composer-inner"><textarea id="question" placeholder="Ask about this project's sources…" rows="1" aria-label="Question"></textarea><button class="button" id="send">Ask</button></div><p class="composer-note">Answers use only the selected project's imported sources. If nothing matches, the assistant says it could not find an answer.</p></div></form></section>
-        <aside class="resources"><section class="resource-section"><h2>Knowledge sources</h2><p>Answers search only sources imported into this project. Each source is kept separate by project.</p>
+        <section class="chat-panel"><div id="messages" aria-live="polite"><div class="empty"><div class="glyph">◉</div><h2>Choose a project to begin</h2><p>Project A and Project B have separate SQLite files. Ask about each project's private test code to verify the boundary.</p></div></div><form id="chatForm" class="composer"><div style="width:100%"><div class="composer-inner"><textarea id="question" placeholder="Ask about this project's sources or the web…" rows="1" aria-label="Question"></textarea><button class="button" id="send">Ask</button></div><p class="composer-note">Answers prioritize this project's sources. When they don't contain the answer, the configured web search can provide a separately labeled answer with URLs.</p></div></form></section>
+        <aside class="resources"><section class="resource-section"><h2>Knowledge sources</h2><p>Project sources are checked first; internet fallback may be used when enabled. Each project's files stay separate.</p>
           <form id="uploadForm"><label for="fileInput">Add multiple .txt or .md files</label><input id="fileInput" type="file" accept=".txt,.md,text/plain,text/markdown" multiple><button class="button small" style="margin-top:8px">Add selected files</button><div id="fileStatus" class="source-status" role="status"></div></form>
           <hr class="source-divider">
           <form id="websiteForm"><label for="websiteUrls">Add public website pages</label><textarea id="websiteUrls" placeholder="https://example.com/help&#10;https://example.com/returns" rows="3" aria-describedby="websiteHelp"></textarea><small id="websiteHelp" style="display:block;color:var(--muted);font-size:11px;margin-top:5px">One HTTPS page URL per line, up to 5. Only the pages you enter are imported; this does not crawl linked pages.</small><button class="button small" style="margin-top:8px">Import website pages</button><div id="websiteStatus" class="source-status" role="status"></div></form>
           <div id="fileList" class="file-list" style="margin-top:11px"></div></section>
-          <section class="resource-section"><h2>Hermes namespace</h2><p>The test Telegram bot is bound to Project A's knowledge MCP server. Project B has its own profile mapping.</p><span id="profileName" class="profile-chip">—</span></section>
+          <section class="resource-section"><h2>Hermes namespace</h2><p>This project has its own Hermes profile mapping.</p><span id="profileName" class="profile-chip">—</span></section>
+          <section class="resource-section"><h2>Telegram bot</h2><p id="telegramStatus">Checking bot configuration…</p><p>After setup, add the bot to a group and connect it to this project with:</p><code id="telegramBindCommand">/bind@YourBotUsername project-slug</code><p>Ask in groups with <code>/ask@YourBotUsername question</code>. Replies prioritize project sources and may use web search. See <a href="/telegram/setup" target="_blank" rel="noopener">setup guide</a>.</p></section>
           <section class="resource-section"><h2>Create a project</h2><p>Creates a new private knowledge store and a matching Hermes profile name.</p><form id="createForm"><label for="projectName">Project name</label><input id="projectName" placeholder="e.g. Project C" maxlength="100" required><button class="button secondary small" style="margin-top:8px">Create project</button></form></section>
           <div class="test-box"><strong>Isolation check</strong><br>Ask “What is this project's private test code?” in both projects. Project A should return ALPHA-QUARTZ-731; Project B should return BRAVO-EMBER-942.</div>
         </aside>
@@ -120,9 +121,10 @@
       if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
       return data;
     }
-    function showApp(email) { $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); $('signedIn').textContent = `Admin · ${email}`; loadProjects(); }
+    function showApp(email) { $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); $('signedIn').textContent = `Admin · ${email}`; loadProjects(); loadTelegramStatus(); }
     function showLogin() { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); }
     async function checkLogin() { try { const me = await api('/api/me'); showApp(me.email); } catch { showLogin(); } }
+    async function loadTelegramStatus() { try { const response=await fetch('/telegram/status',{cache:'no-store'}); const data=await response.json(); $('telegramStatus').textContent=data.configured?'Bot webhook settings are present.':'Not configured on this server yet; set the Telegram secrets and webhook using the setup guide.'; } catch { $('telegramStatus').textContent='Could not read Telegram configuration status.'; } }
     async function loadProjects(selectSlug) {
       const data = await api('/api/projects'); projects = data.projects; const list = $('projectList'); list.replaceChildren();
       projects.forEach(project => { const b = document.createElement('button'); b.className = 'project-button' + (project.slug===activeSlug?' active':''); b.innerHTML = ''; const name = document.createElement('strong'); name.textContent = project.name; const profile = document.createElement('span'); profile.textContent = `Hermes · ${project.hermes_profile}`; b.append(name, profile); b.onclick = () => selectProject(project.slug); list.append(b); });
@@ -154,6 +156,7 @@
     async function selectProject(slug) {
       activeSlug = slug; const project = projects.find(p=>p.slug===slug); if (!project) return;
       $('projectTitle').textContent = project.name; $('profileName').textContent = project.hermes_profile;
+      $('telegramBindCommand').textContent = `/bind@YourBotUsername ${project.slug}`;
       [...$('projectList').children].forEach((b,i)=>b.classList.toggle('active',projects[i]?.slug===slug));
       $('messages').replaceChildren(); const intro = document.createElement('div'); intro.className='empty'; intro.innerHTML='<div class="glyph">◉</div><h2>Ask this project</h2><p>Try “What is this project’s private test code?” Then switch projects and compare the answer.</p>'; $('messages').append(intro);
       await loadDocuments(slug);
