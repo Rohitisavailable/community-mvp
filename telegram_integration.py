@@ -217,6 +217,8 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
                 result = answer_question(slug, question, session, channel="telegram")
                 answer = str(result.get("answer", "")).strip()
                 sources = str(result.get("sources", "")).strip()
+                if answer and not re.match(r"^(?:got it|okay|ok|sure|understood)\b", answer, re.IGNORECASE):
+                    answer = f"Got it — {answer}"
                 if sources and sources not in answer:
                     answer += f"\n\nSource: {sources}"
                 send_text(chat_id, answer or "I couldn't find that in this project's available sources.", reply_to)
