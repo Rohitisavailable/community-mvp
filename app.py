@@ -474,7 +474,7 @@ def same_origin_and_payload_guard():
                     return json_error("Cross-origin request blocked", 403)
             except ValueError:
                 return json_error("Invalid request origin", 403)
-        elif REQUIRE_ORIGIN:
+        elif REQUIRE_ORIGIN and request.path != "/telegram/webhook":
             return json_error("Origin header required", 403)
         if request.mimetype != "application/json":
             return json_error("Content-Type must be application/json", 415)
