@@ -214,7 +214,7 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
             typing_thread.start()
             try:
                 session = f"telegram:{chat_key}:{user_key}"
-                result = answer_question(slug, question, session)
+                result = answer_question(slug, question, session, channel="telegram")
                 answer = str(result.get("answer", "")).strip()
                 sources = str(result.get("sources", "")).strip()
                 if sources and sources not in answer:
