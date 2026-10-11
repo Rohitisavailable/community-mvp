@@ -101,7 +101,7 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
             "Add a source: /source https://example.com/page\n"
             "Add a .txt or .md file: send it as a document.\n"
             "Disconnect: /unbind\n\n"
-            "Replies use only this project's imported sources. I'm the project's bot; I won't pretend to be a human."
+            "Replies prioritize this project's imported sources. If they don't contain the answer, configured web search may be used. I'm the project's bot; I won't pretend to be a human."
         )
 
     def process_update(update: dict) -> None:
