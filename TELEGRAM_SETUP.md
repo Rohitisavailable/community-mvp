@@ -30,6 +30,14 @@ Community Desk can serve Telegram questions through a webhook. Each Telegram cha
 6. Add the bot to a Telegram group (public or private). In the group, connect it to a project by sending `/bind@YourBotUsername project-slug` as a configured admin. Use the slug shown in the dashboard. One group can be bound to one project; another group can be bound to another project.
 7. Ask in a group with `/ask@YourBotUsername your question`. In a private chat, send the question normally. Answers prioritize the bound project's sources; if they do not answer, configured web search may be used and must be cited separately.
 
+## Auto-post RSS updates to a Telegram channel
+
+1. In Telegram, add this bot to the target channel as an administrator and grant it permission to post messages. For a public channel, you can use its `@username`; for a private channel, use its numeric channel ID (usually starts with `-100`).
+2. In the Community Desk dashboard, select the project, then use **RSS auto-posting** to enter the public HTTPS RSS/Atom feed URL and channel. Optionally add comma-separated keywords; an item is sent if any keyword appears in its title, summary, or category.
+3. The app validates the feed before saving. It records the current entries as already seen, then posts later entries at most once, oldest first, with a title, short excerpt, and link. Failed posts are retried. Remove the feed from the same panel to stop monitoring it.
+
+The app checks feeds about every five minutes while its web process is running. Render's free web service can sleep when idle, so polling and posts can be delayed until the service wakes. Use an always-on paid service or a scheduled worker for dependable publishing; this setup does not create paid Render resources automatically.
+
 ## Add and manage sources in Telegram
 
 - A configured admin can send a `.txt` or `.md` document into a bound group or private chat. Files must be UTF-8 text and under 1 MB. The bot confirms which project received the source.
@@ -41,7 +49,7 @@ Community Desk can serve Telegram questions through a webhook. Each Telegram cha
 
 The webhook ignores ordinary group conversation unless the bot is explicitly addressed with `/ask@YourBotUsername ...`; this reduces noise and avoids collecting unrelated group messages. `/bind` and `/ask` should include the bot username in groups so Telegram delivers the command when privacy mode is enabled. For file uploads and link imports in a group, turn privacy mode off in BotFather or make the bot a group admin; after changing privacy mode, re-add the bot. The bot must be invited to private groups by a member with permission to add it.
 
-A channel is a broadcast surface and does not provide ordinary member-to-bot conversations. To support questions for a channel audience, link a discussion group, add the bot to that group, and bind the discussion group to the project. The bot can be added as a channel administrator if it needs to post channel messages, but channel posting is not implemented by this MVP.
+A channel is a broadcast surface and does not provide ordinary member-to-bot conversations. To support questions for a channel audience, link a discussion group, add the bot to that group, and bind the discussion group to the project. For RSS publishing, the bot can be made a channel administrator with permission to post; see the auto-post setup above.
 
 The bot uses Telegram's visible typing indicator and a natural support tone. It does not impersonate a human and will identify itself truthfully if asked. Response speed depends on the configured model/provider and its availability; web search adds latency. The webhook acknowledges Telegram promptly and continues processing in the background, but Render restarts can interrupt an in-flight reply.
 

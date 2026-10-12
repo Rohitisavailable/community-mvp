@@ -102,8 +102,14 @@
           <hr class="source-divider">
           <form id="websiteForm"><label for="websiteUrls">Add public website pages</label><textarea id="websiteUrls" placeholder="https://example.com/help&#10;https://example.com/returns" rows="3" aria-describedby="websiteHelp"></textarea><small id="websiteHelp" style="display:block;color:var(--muted);font-size:11px;margin-top:5px">One HTTPS page URL per line, up to 5. Only the pages you enter are imported; this does not crawl linked pages.</small><button class="button small" style="margin-top:8px">Import website pages</button><div id="websiteStatus" class="source-status" role="status"></div></form>
           <div id="fileList" class="file-list" style="margin-top:11px"></div></section>
+          <section class="resource-section"><h2>RSS auto-posting</h2><p>New RSS or Atom feed items can be posted to a Telegram channel. Add the bot as a channel admin with permission to post. The first check skips existing feed items; only future items are sent.</p>
+            <form id="rssForm"><label for="rssFeedUrl">RSS feed URL</label><input id="rssFeedUrl" type="url" placeholder="https://example.com/feed.xml" required>
+              <label for="rssChannelId">Telegram channel</label><input id="rssChannelId" placeholder="@mychannel or -100…" maxlength="100" required>
+              <label for="rssKeywords">Filter keywords <small>(optional, comma separated)</small></label><input id="rssKeywords" placeholder="orders, shipping">
+              <button class="button small" style="margin-top:8px">Connect feed</button><div id="rssStatus" class="source-status" role="status"></div>
+            </form><div id="rssFeedList" class="file-list" style="margin-top:11px"></div></section>
           <section class="resource-section"><h2>Hermes namespace</h2><p>This project has its own Hermes profile mapping.</p><span id="profileName" class="profile-chip">—</span></section>
-          <section class="resource-section"><h2>Telegram bot</h2><p id="telegramStatus">Checking bot configuration…</p><p>After setup, add the bot to a group and connect it to this project with:</p><code id="telegramBindCommand">/bind@YourBotUsername project-slug</code><p>Ask in groups with <code>/ask@YourBotUsername question</code>. Replies prioritize project sources and may use web search. See <a href="/telegram/setup" target="_blank" rel="noopener">setup guide</a>.</p></section>
+          <section class="resource-section"><h2>Telegram bot</h2><p id="telegramStatus">Checking bot configuration…</p><p>For Q&amp;A, add the bot to a group and connect it to this project with:</p><code id="telegramBindCommand">/bind@YourBotUsername project-slug</code><p>Ask normally in a group or use <code>/ask@YourBotUsername question</code>. Replies prioritize project sources and may use web search. See <a href="/telegram/setup" target="_blank" rel="noopener">setup guide</a>.</p></section>
           <section class="resource-section"><h2>Create a project</h2><p>Creates a new private knowledge store and a matching Hermes profile name.</p><form id="createForm"><label for="projectName">Project name</label><input id="projectName" placeholder="e.g. Project C" maxlength="100" required><button class="button secondary small" style="margin-top:8px">Create project</button></form></section>
           <div class="test-box"><strong>Isolation check</strong><br>Ask “What is this project's private test code?” in both projects. Project A should return ALPHA-QUARTZ-731; Project B should return BRAVO-EMBER-942.</div>
         </aside>
@@ -153,13 +159,36 @@
         if(!d.documents.length) box.textContent='No sources added yet.';
       } catch(err) { box.textContent=err.message; }
     }
+    async function loadRssFeeds(slug) {
+      const box=$('rssFeedList'); box.textContent='Loading feeds…';
+      try {
+        const d=await api(`/api/projects/${encodeURIComponent(slug)}/rss-feeds`); box.replaceChildren();
+        d.feeds.forEach(feed=>{
+          const card=document.createElement('div'); card.className='file-item';
+          const row=document.createElement('div'); row.className='file-row';
+          const name=document.createElement('strong'); name.className='file-name'; name.textContent=feed.feed_url;
+          const remove=document.createElement('button'); remove.type='button'; remove.className='file-remove'; remove.textContent='Remove';
+          remove.addEventListener('click',async()=>{
+            if(!window.confirm(`Remove this feed from ${feed.channel_id}?`)) return;
+            remove.disabled=true;
+            try { await api(`/api/projects/${encodeURIComponent(slug)}/rss-feeds/${feed.id}`,{method:'DELETE',body:'{}'}); await loadRssFeeds(slug); }
+            catch(err) { remove.disabled=false; alert(err.message); }
+          });
+          row.append(name,remove); card.append(row);
+          const details=document.createElement('small');
+          details.textContent=`Posts to ${feed.channel_id}${feed.keywords?` · Filter: ${feed.keywords}`:''}${feed.last_error?` · Error: ${feed.last_error}`:feed.initialized?' · Monitoring every 5 minutes while the service is awake':' · Initializing; old items will be skipped'}`;
+          card.append(details); box.append(card);
+        });
+        if(!d.feeds.length) box.textContent='No RSS feeds connected to this project.';
+      } catch(err) { box.textContent=err.message; }
+    }
     async function selectProject(slug) {
       activeSlug = slug; const project = projects.find(p=>p.slug===slug); if (!project) return;
       $('projectTitle').textContent = project.name; $('profileName').textContent = project.hermes_profile;
       $('telegramBindCommand').textContent = `/bind@YourBotUsername ${project.slug}`;
       [...$('projectList').children].forEach((b,i)=>b.classList.toggle('active',projects[i]?.slug===slug));
       $('messages').replaceChildren(); const intro = document.createElement('div'); intro.className='empty'; intro.innerHTML='<div class="glyph">◉</div><h2>Ask this project</h2><p>Try “What is this project’s private test code?” Then switch projects and compare the answer.</p>'; $('messages').append(intro);
-      await loadDocuments(slug);
+      await Promise.all([loadDocuments(slug),loadRssFeeds(slug)]);
       $('question').focus();
     }
     function bubble(role,text,source='') { $('messages').querySelector('.empty')?.remove(); const el=document.createElement('div'); el.className=`bubble ${role}`; el.textContent=text; if(source){const s=document.createElement('span');s.className='source';s.textContent=source;el.append(s);} $('messages').append(el); $('messages').scrollTop=$('messages').scrollHeight; }
@@ -170,6 +199,7 @@
     $('question').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('chatForm').requestSubmit();}});
     $('uploadForm').addEventListener('submit',async e=>{e.preventDefault();if(!activeSlug)return;const files=Array.from($('fileInput').files);const status=$('fileStatus');status.className='source-status';if(!files.length){status.textContent='Choose one or more .txt or .md files first.';return;}let added=0;const errors=[];for(const file of files){try{const text=await file.text();await api(`/api/projects/${encodeURIComponent(activeSlug)}/documents`,{method:'POST',body:JSON.stringify({filename:file.name,text})});added++;}catch(err){errors.push(`${file.name}: ${err.message}`);}}$('fileInput').value='';status.classList.toggle('error',errors.length>0);status.textContent=[added?`${added} file${added===1?'':'s'} added.`:'',...errors].filter(Boolean).join(' ');await loadDocuments(activeSlug);});
     $('websiteForm').addEventListener('submit',async e=>{e.preventDefault();if(!activeSlug)return;const status=$('websiteStatus');status.className='source-status';const urls=$('websiteUrls').value.split(/\r?\n/).map(url=>url.trim()).filter(Boolean);if(!urls.length){status.textContent='Enter at least one HTTPS page URL.';return;}if(urls.length>5){status.classList.add('error');status.textContent='Add no more than 5 URLs at a time.';return;}status.textContent='Importing pages…';try{const d=await api(`/api/projects/${encodeURIComponent(activeSlug)}/websites`,{method:'POST',body:JSON.stringify({urls})});const added=d.results.filter(item=>item.ok).length;const errors=d.results.filter(item=>!item.ok).map(item=>`${item.url}: ${item.error}`);status.classList.toggle('error',errors.length>0);status.textContent=[added?`${added} page${added===1?'':'s'} imported.`:'',...errors].filter(Boolean).join(' ')||'No pages imported.';if(added)$('websiteUrls').value='';await loadDocuments(activeSlug);}catch(err){status.classList.add('error');status.textContent=err.message;}});
+    $('rssForm').addEventListener('submit',async e=>{e.preventDefault();if(!activeSlug)return;const slug=activeSlug;const status=$('rssStatus');status.className='source-status';status.textContent='Checking RSS feed…';try{const d=await api(`/api/projects/${encodeURIComponent(slug)}/rss-feeds`,{method:'POST',body:JSON.stringify({feed_url:$('rssFeedUrl').value.trim(),channel_id:$('rssChannelId').value.trim(),keywords:$('rssKeywords').value.trim()})});status.textContent=d.message;$('rssFeedUrl').value='';$('rssKeywords').value='';await loadRssFeeds(slug);}catch(err){status.classList.add('error');status.textContent=err.message;}});
     $('createForm').addEventListener('submit',async e=>{e.preventDefault();const name=$('projectName').value.trim();try{const d=await api('/api/projects',{method:'POST',body:JSON.stringify({name})});$('projectName').value='';await loadProjects(d.project.slug);}catch(err){alert(err.message);}});
     checkLogin();
   </script>

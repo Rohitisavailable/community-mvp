@@ -65,11 +65,15 @@ class Store:
                 db.execute("CREATE INDEX IF NOT EXISTS messages_session_idx ON community_desk.messages(project_slug, session_id, id)")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.backboard_threads (project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, session_id TEXT NOT NULL, thread_id TEXT NOT NULL, PRIMARY KEY(project_slug, session_id))")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.telegram_chats (chat_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, chat_type TEXT NOT NULL, chat_title TEXT NOT NULL DEFAULT '', bound_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+                db.execute("CREATE TABLE IF NOT EXISTS community_desk.rss_feeds (id BIGSERIAL PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, feed_url TEXT NOT NULL, channel_id TEXT NOT NULL, keywords TEXT NOT NULL DEFAULT '', initialized BOOLEAN NOT NULL DEFAULT FALSE, last_checked_at TIMESTAMPTZ, last_error TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(project_slug,feed_url,channel_id))")
+                db.execute("CREATE TABLE IF NOT EXISTS community_desk.rss_deliveries (feed_id BIGINT NOT NULL REFERENCES community_desk.rss_feeds(id) ON DELETE CASCADE, item_key TEXT NOT NULL, status TEXT NOT NULL, claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(), published_at TIMESTAMPTZ, PRIMARY KEY(feed_id,item_key))")
             return
         with self.connect("dashboard") as db:
             db.execute("CREATE TABLE IF NOT EXISTS admins (email TEXT PRIMARY KEY, password_hash TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS projects (slug TEXT PRIMARY KEY, name TEXT NOT NULL, hermes_profile TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             db.execute("CREATE TABLE IF NOT EXISTS telegram_chats (chat_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE, chat_type TEXT NOT NULL, chat_title TEXT NOT NULL DEFAULT '', bound_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            db.execute("CREATE TABLE IF NOT EXISTS rss_feeds (id INTEGER PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE, feed_url TEXT NOT NULL, channel_id TEXT NOT NULL, keywords TEXT NOT NULL DEFAULT '', initialized INTEGER NOT NULL DEFAULT 0, last_checked_at TEXT, last_error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(project_slug,feed_url,channel_id))")
+            db.execute("CREATE TABLE IF NOT EXISTS rss_deliveries (feed_id INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE, item_key TEXT NOT NULL, status TEXT NOT NULL, claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, published_at TEXT, PRIMARY KEY(feed_id,item_key))")
             existing_projects = db.execute("SELECT slug FROM projects").fetchall()
         # Add tables introduced by newer app versions to existing local project
         # databases too. Older projects do not pass through ensure_project() at
@@ -135,6 +139,76 @@ class Store:
         marker = "%s" if self.backend == "postgres" else "?"
         with self.connect("dashboard") as db:
             db.execute(f"DELETE FROM {table} WHERE chat_id={marker}", (chat_id,))
+
+    def list_rss_feeds(self, slug: str):
+        table = "community_desk.rss_feeds" if self.backend == "postgres" else "rss_feeds"
+        marker = "%s" if self.backend == "postgres" else "?"
+        with self.connect("dashboard") as db:
+            rows = db.execute(f"SELECT id,project_slug,feed_url,channel_id,keywords,initialized,last_checked_at,last_error,created_at FROM {table} WHERE project_slug={marker} ORDER BY id DESC", (slug,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def add_rss_feed(self, slug: str, feed_url: str, channel_id: str, keywords: str) -> int:
+        if self.backend == "postgres":
+            with self.connect("dashboard") as db:
+                row = db.execute("INSERT INTO community_desk.rss_feeds(project_slug,feed_url,channel_id,keywords) VALUES(%s,%s,%s,%s) RETURNING id", (slug, feed_url, channel_id, keywords)).fetchone()
+                return int(row["id"])
+        with self.connect("dashboard") as db:
+            cursor = db.execute("INSERT INTO rss_feeds(project_slug,feed_url,channel_id,keywords) VALUES(?,?,?,?)", (slug, feed_url, channel_id, keywords))
+            return int(cursor.lastrowid)
+
+    def delete_rss_feed(self, slug: str, feed_id: int) -> bool:
+        table = "community_desk.rss_feeds" if self.backend == "postgres" else "rss_feeds"
+        marker = "%s" if self.backend == "postgres" else "?"
+        with self.connect("dashboard") as db:
+            cursor = db.execute(f"DELETE FROM {table} WHERE project_slug={marker} AND id={marker}", (slug, feed_id))
+            return cursor.rowcount > 0
+
+    def enabled_rss_feeds(self):
+        table = "community_desk.rss_feeds" if self.backend == "postgres" else "rss_feeds"
+        with self.connect("dashboard") as db:
+            return [dict(row) for row in db.execute(f"SELECT id,project_slug,feed_url,channel_id,keywords,initialized FROM {table} ORDER BY id")]
+
+    def set_rss_feed_status(self, feed_id: int, error: str = "") -> None:
+        table = "community_desk.rss_feeds"
+        marker = "%s"
+        if self.backend == "sqlite":
+            table, marker = "rss_feeds", "?"
+        with self.connect("dashboard") as db:
+            if self.backend == "postgres":
+                db.execute(f"UPDATE {table} SET last_checked_at=now(),last_error={marker} WHERE id={marker}", (error[:500], feed_id))
+            else:
+                db.execute(f"UPDATE {table} SET last_checked_at=CURRENT_TIMESTAMP,last_error={marker} WHERE id={marker}", (error[:500], feed_id))
+
+    def initialize_rss_feed(self, feed_id: int, item_keys: list[str]) -> None:
+        table = "community_desk.rss_deliveries" if self.backend == "postgres" else "rss_deliveries"
+        marker = "%s" if self.backend == "postgres" else "?"
+        with self.connect("dashboard") as db:
+            for item_key in item_keys:
+                db.execute(f"INSERT INTO {table}(feed_id,item_key,status) VALUES({marker},{marker},'skipped') ON CONFLICT(feed_id,item_key) DO NOTHING", (feed_id, item_key))
+            feeds = "community_desk.rss_feeds" if self.backend == "postgres" else "rss_feeds"
+            db.execute(f"UPDATE {feeds} SET initialized=TRUE WHERE id={marker}" if self.backend == "postgres" else f"UPDATE {feeds} SET initialized=1 WHERE id={marker}", (feed_id,))
+
+    def claim_rss_item(self, feed_id: int, item_key: str) -> bool:
+        table = "community_desk.rss_deliveries" if self.backend == "postgres" else "rss_deliveries"
+        marker = "%s" if self.backend == "postgres" else "?"
+        with self.connect("dashboard") as db:
+            if self.backend == "postgres":
+                row = db.execute(f"INSERT INTO {table} AS current_item(feed_id,item_key,status) VALUES({marker},{marker},'sending') ON CONFLICT(feed_id,item_key) DO UPDATE SET status='sending',claimed_at=now() WHERE current_item.status NOT IN ('sent','skipped') AND (current_item.status!='sending' OR current_item.claimed_at < now()-interval '15 minutes') RETURNING feed_id", (feed_id, item_key)).fetchone()
+                return row is not None
+            row = db.execute(f"INSERT INTO {table}(feed_id,item_key,status) VALUES({marker},{marker},'sending') ON CONFLICT(feed_id,item_key) DO UPDATE SET status='sending',claimed_at=CURRENT_TIMESTAMP WHERE {table}.status NOT IN ('sent','skipped') AND ({table}.status!='sending' OR {table}.claimed_at < datetime('now','-15 minutes')) RETURNING feed_id", (feed_id, item_key)).fetchone()
+            return row is not None
+
+    def finish_rss_item(self, feed_id: int, item_key: str, sent: bool, skipped: bool = False) -> None:
+        table = "community_desk.rss_deliveries" if self.backend == "postgres" else "rss_deliveries"
+        marker = "%s" if self.backend == "postgres" else "?"
+        with self.connect("dashboard") as db:
+            status = "sent" if sent else ("skipped" if skipped else "failed")
+            if sent and self.backend == "postgres":
+                db.execute(f"UPDATE {table} SET status={marker},published_at=now() WHERE feed_id={marker} AND item_key={marker}", (status, feed_id, item_key))
+            elif sent:
+                db.execute(f"UPDATE {table} SET status={marker},published_at=CURRENT_TIMESTAMP WHERE feed_id={marker} AND item_key={marker}", (status, feed_id, item_key))
+            else:
+                db.execute(f"UPDATE {table} SET status={marker} WHERE feed_id={marker} AND item_key={marker}", (status, feed_id, item_key))
 
     def ensure_project(self, slug: str, name: str, profile: str) -> None:
         if self.backend == "postgres":

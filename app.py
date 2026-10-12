@@ -24,6 +24,7 @@ from waitress import serve
 
 from storage import Store
 from telegram_integration import create_telegram_blueprint
+from rss_publisher import fetch_feed, start_rss_scheduler
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -649,6 +650,59 @@ def websites_post(slug):
     return jsonify({"results": results}), 200
 
 
+@app.get("/api/projects/<slug>/rss-feeds")
+def rss_feeds_get(slug):
+    denied = admin_required()
+    if denied:
+        return denied
+    if not project_record(slug):
+        return json_error("Project not found", 404)
+    return jsonify({"feeds": STORE.list_rss_feeds(slug)})
+
+
+@app.post("/api/projects/<slug>/rss-feeds")
+def rss_feeds_post(slug):
+    denied = admin_required()
+    if denied:
+        return denied
+    if not project_record(slug):
+        return json_error("Project not found", 404)
+    payload = request.get_json(silent=True) or {}
+    raw_url = str(payload.get("feed_url", "")).strip()
+    channel_id = str(payload.get("channel_id", "")).strip()
+    keywords = str(payload.get("keywords", "")).strip()
+    if len(keywords) > 500 or any(len(term.strip()) > 60 for term in keywords.split(",")):
+        return json_error("Use comma-separated filter keywords, each 60 characters or less", 400)
+    if not (re.fullmatch(r"@[A-Za-z0-9_]{5,32}", channel_id) or re.fullmatch(r"-100\d{3,20}", channel_id)):
+        return json_error("Enter a public channel username such as @mychannel, or a private channel ID beginning with -100", 400)
+    try:
+        feed_url, items = fetch_feed(raw_url, validate_public_https_url)
+    except ValueError as error:
+        return json_error(str(error), 400)
+    try:
+        feed_id = STORE.add_rss_feed(slug, feed_url, channel_id, keywords)
+    except Exception as error:
+        if STORE.is_integrity_error(error):
+            return json_error("That feed is already connected to this channel for this project", 409)
+        raise
+    # Snapshot the current feed so connecting it never floods the channel with
+    # old entries. The first poll will only publish items added after setup.
+    STORE.initialize_rss_feed(feed_id, [item["key"] for item in items])
+    return jsonify({"ok": True, "feed_id": feed_id, "message": "Feed saved. Existing items will be skipped; new items will be posted."}), 201
+
+
+@app.delete("/api/projects/<slug>/rss-feeds/<int:feed_id>")
+def rss_feeds_delete(slug, feed_id):
+    denied = admin_required()
+    if denied:
+        return denied
+    if not project_record(slug):
+        return json_error("Project not found", 404)
+    if not STORE.delete_rss_feed(slug, feed_id):
+        return json_error("RSS feed not found in this project", 404)
+    return jsonify({"ok": True})
+
+
 @app.delete("/api/projects/<slug>/documents/<int:document_id>")
 def documents_delete(slug, document_id):
     denied = admin_required()
@@ -695,6 +749,7 @@ def project_delete(slug):
 
 def main() -> None:
     seed()
+    start_rss_scheduler(STORE, validate_public_https_url)
     port = int(os.getenv("PORT", os.getenv("COMMUNITY_PORT", "8787")))
     host = os.getenv("COMMUNITY_HOST", "0.0.0.0" if IS_PRODUCTION else "127.0.0.1")
     app.logger.info("Community Desk starting on %s:%s using %s storage", host, port, STORE.backend)
