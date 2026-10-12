@@ -20,6 +20,7 @@ from flask import Blueprint, jsonify, request
 
 MAX_TELEGRAM_SOURCE_BYTES = 1_000_000
 MAX_TELEGRAM_TEXT = 4000
+PENDING_ASK_TTL_SECONDS = 5 * 60
 _LOG = logging.getLogger("community_desk.telegram")
 
 
@@ -34,6 +35,8 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
     seen_updates: set[int] = set()
     seen_order: deque[int] = deque()
     capacity = threading.BoundedSemaphore(24)
+    pending_asks: dict[tuple[str, str], tuple[int, float]] = {}
+    pending_asks_lock = threading.Lock()
 
     def api(method: str, payload: dict | None = None) -> dict:
         if not token:
@@ -50,15 +53,46 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
             raise RuntimeError(f"Telegram API rejected {method}")
         return result.get("result", {})
 
-    def send_text(chat_id: int | str, text: str, reply_to: int | None = None) -> None:
+    def send_text(
+        chat_id: int | str,
+        text: str,
+        reply_to: int | None = None,
+        reply_markup: dict | None = None,
+    ) -> dict:
         # Telegram text messages are limited to 4096 characters. Use plain text
         # so source excerpts cannot inject Telegram HTML/Markdown formatting.
         chunks = [text[i:i + MAX_TELEGRAM_TEXT] for i in range(0, len(text), MAX_TELEGRAM_TEXT)] or ["I couldn't prepare a reply."]
+        first_result = {}
         for index, chunk in enumerate(chunks):
             payload = {"chat_id": chat_id, "text": chunk}
             if index == 0 and reply_to is not None:
                 payload["reply_parameters"] = {"message_id": reply_to, "allow_sending_without_reply": True}
-            api("sendMessage", payload)
+            if index == 0 and reply_markup:
+                payload["reply_markup"] = reply_markup
+            result = api("sendMessage", payload)
+            if index == 0:
+                first_result = result
+        return first_result
+
+    def register_group_commands() -> None:
+        if not token:
+            return
+        try:
+            api("setMyCommands", {
+                "scope": {"type": "all_group_chats"},
+                "commands": [
+                    {"command": "start", "description": "See how to use this bot"},
+                    {"command": "help", "description": "Show bot help"},
+                    {"command": "chatid", "description": "Show this chat's ID"},
+                    {"command": "ask", "description": "Ask this project's sources"},
+                ],
+            })
+            _LOG.info("Registered Telegram group commands")
+        except Exception as error:
+            # A temporary Telegram outage must not prevent the web app starting.
+            _LOG.warning("Could not register Telegram group commands (%s)", type(error).__name__)
+
+    threading.Thread(target=register_group_commands, name="telegram-commands", daemon=True).start()
 
     def send_typing(chat_id: int | str) -> None:
         try:
@@ -99,11 +133,12 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
             "Admin setup: send /myid to get your Telegram user ID.\n"
             "Chat setup: send /chatid to get this chat's ID (useful for private groups).\n"
             "Admin setup: /bind project-slug\n"
-            "Ask: send a question normally in this chat, or use /ask your question.\n"
+            "Ask in a group: choose /ask from the command menu and reply to the prompt, or send /ask your question in one message.\n"
+            "Ask in a private chat: send your question normally or use /ask your question.\n"
             "Add a source: /source https://example.com/page\n"
             "Add a .txt or .md file: send it as a document.\n"
             "Disconnect: /unbind\n\n"
-            "Replies prioritize this project's imported sources. If they don't contain the answer, configured web search may be used. I'm the project's bot; I won't pretend to be a human."
+            "Anyone in a connected chat can ask. Only configured admins can bind chats or add sources. Replies prioritize this project's imported sources. If they don't contain the answer, configured web search may be used. I'm the project's bot; I won't pretend to be a human."
         )
 
     def process_update(update: dict) -> None:
@@ -191,13 +226,50 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
                 send_text(chat_id, f"Added that page to {project['name']} only: {final_url}", reply_to)
                 return
 
+            if command == "ask" and not argument:
+                prompt = send_text(
+                    chat_id,
+                    "What would you like to ask about this project's sources? Reply to this message with your question.",
+                    reply_to,
+                    reply_markup={
+                        "force_reply": True,
+                        "input_field_placeholder": "Type your question...",
+                        "selective": True,
+                    },
+                )
+                prompt_id = prompt.get("message_id")
+                if prompt_id is not None:
+                    now = time.monotonic()
+                    with pending_asks_lock:
+                        for key, (_, expires_at) in list(pending_asks.items()):
+                            if expires_at <= now:
+                                pending_asks.pop(key, None)
+                        pending_asks[(chat_key, user_key)] = (int(prompt_id), now + PENDING_ASK_TTL_SECONDS)
+                return
+
             if command == "ask":
                 question = argument
             elif command:
                 send_text(chat_id, "I don't know that command. Send /help for options.", reply_to)
                 return
             else:
-                question = text
+                question = ""
+                pending_key = (chat_key, user_key)
+                reply = message.get("reply_to_message") or {}
+                now = time.monotonic()
+                with pending_asks_lock:
+                    pending = pending_asks.get(pending_key)
+                    if pending and pending[1] <= now:
+                        pending_asks.pop(pending_key, None)
+                        pending = None
+                    if pending and reply.get("message_id") == pending[0]:
+                        pending_asks.pop(pending_key, None)
+                        question = text
+                if not question:
+                    if str(chat.get("type", "")) in {"group", "supergroup"}:
+                        # Do not answer unrelated group conversation.
+                        return
+                    question = text
             if len(question) < 2:
                 send_text(chat_id, "Please include a question.", reply_to)
                 return

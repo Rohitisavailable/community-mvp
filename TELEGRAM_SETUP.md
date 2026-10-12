@@ -28,7 +28,7 @@ Community Desk can serve Telegram questions through a webhook. Each Telegram cha
    A successful response contains `"ok": true`. You can inspect webhook health with Telegram's `getWebhookInfo` method; never paste its URL/token into a public issue or chat.
 5. Open a private chat with the bot and send `/start`, then `/myid`. Add the numeric ID it returns to Render's `TELEGRAM_ADMIN_USER_IDS`. For multiple admins, separate IDs with commas. Redeploy after changing the value.
 6. Add the bot to a Telegram group (public or private). In the group, connect it to a project by sending `/bind@YourBotUsername project-slug` as a configured admin. Use the slug shown in the dashboard. One group can be bound to one project; another group can be bound to another project.
-7. Ask in a group with `/ask@YourBotUsername your question`. In a private chat, send the question normally. Answers prioritize the bound project's sources; if they do not answer, configured web search may be used and must be cited separately.
+7. Any member can ask in the bound group. Choose `/ask` from Telegram's command menu and reply to the bot's prompt, or send `/ask@YourBotUsername your question` as a single message. In a private chat, send the question normally. Answers prioritize the bound project's sources; if they do not answer, configured web search may be used and must be cited separately.
 
 ## Auto-post RSS updates to a Telegram channel
 
@@ -47,7 +47,7 @@ The app checks feeds about every five minutes while its web process is running. 
 
 ## Groups, channels, and identity
 
-The webhook ignores ordinary group conversation unless the bot is explicitly addressed with `/ask@YourBotUsername ...`; this reduces noise and avoids collecting unrelated group messages. `/bind` and `/ask` should include the bot username in groups so Telegram delivers the command when privacy mode is enabled. For file uploads and link imports in a group, turn privacy mode off in BotFather or make the bot a group admin; after changing privacy mode, re-add the bot. The bot must be invited to private groups by a member with permission to add it.
+In groups, ordinary conversation is ignored; `/ask` is available to all members and only `/bind`, `/unbind`, and source management require a configured admin. The app registers `/ask` in Telegram's group command menu. If a bot is not a group admin and privacy mode is enabled, address the command as `/ask@YourBotUsername ...`; admins and bots with privacy disabled receive all group messages. After changing privacy mode, re-add the bot. The bot must be invited to private groups by a member with permission to add it.
 
 A channel is a broadcast surface and does not provide ordinary member-to-bot conversations. To support questions for a channel audience, link a discussion group, add the bot to that group, and bind the discussion group to the project. For RSS publishing, the bot can be made a channel administrator with permission to post; see the auto-post setup above.
 
