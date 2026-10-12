@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import random
 import re
 import threading
 import time
@@ -97,7 +98,7 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
             "Hi! I can answer questions from the sources connected to this chat.\n\n"
             "Admin setup: send /myid to get your Telegram user ID.\n"
             "Admin setup: /bind project-slug\n"
-            "Ask: /ask your question (in a group), or send a message here in private chat.\n"
+            "Ask: send a question normally in this chat, or use /ask your question.\n"
             "Add a source: /source https://example.com/page\n"
             "Add a .txt or .md file: send it as a document.\n"
             "Disconnect: /unbind\n\n"
@@ -190,18 +191,21 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
             elif command:
                 send_text(chat_id, "I don't know that command. Send /help for options.", reply_to)
                 return
-            elif chat.get("type") == "private":
-                question = text
             else:
-                # Keep group traffic quiet and avoid collecting messages that
-                # were not directed to the bot. /ask always works in groups.
-                return
+                question = text
             if len(question) < 2:
-                send_text(chat_id, "Please include a question after /ask.", reply_to)
+                send_text(chat_id, "Please include a question.", reply_to)
                 return
             if len(question) > 5000:
                 send_text(chat_id, "That question is too long; please keep it under 5,000 characters.", reply_to)
                 return
+
+            send_text(chat_id, random.choice((
+                "Let me check the sources connected to this chat.",
+                "I’ll look that up for you.",
+                "One moment—I’m checking the project info.",
+                "Let me find the relevant details.",
+            )), reply_to)
 
             stop_typing = threading.Event()
             send_typing(chat_id)
@@ -217,8 +221,6 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
                 result = answer_question(slug, question, session, channel="telegram")
                 answer = str(result.get("answer", "")).strip()
                 sources = str(result.get("sources", "")).strip()
-                if answer and not re.match(r"^(?:got it|okay|ok|sure|understood)\b", answer, re.IGNORECASE):
-                    answer = f"Got it — {answer}"
                 if sources and sources not in answer:
                     answer += f"\n\nSource: {sources}"
                 send_text(chat_id, answer or "I couldn't find that in this project's available sources.", reply_to)

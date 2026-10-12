@@ -253,7 +253,7 @@ def answer_question(slug: str, question: str, session_id: str, channel: str = "w
     STORE.add_message(slug, session_id, "user", question)
     internet_enabled = WEB_SEARCH_ENABLED and AI_ENABLED and AI_PROVIDER == "backboard" and not other_project_named
     telegram_style = (
-        " In Telegram, when it feels natural, start with a brief acknowledgement such as 'Got it' or 'Sure', then give the direct answer; vary the wording and do not add a canned acknowledgement to every reply."
+        " In Telegram, a separate brief acknowledgement has already been sent; do not repeat it or add another preamble. Give the direct answer in this message."
         if channel == "telegram" else ""
     )
     if not sources and not internet_enabled:
