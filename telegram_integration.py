@@ -97,6 +97,7 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
         return (
             "Hi! I can answer questions from the sources connected to this chat.\n\n"
             "Admin setup: send /myid to get your Telegram user ID.\n"
+            "Chat setup: send /chatid to get this chat's ID (useful for private groups).\n"
             "Admin setup: /bind project-slug\n"
             "Ask: send a question normally in this chat, or use /ask your question.\n"
             "Add a source: /source https://example.com/page\n"
@@ -130,6 +131,10 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
                 return
             if command == "myid":
                 send_text(chat_id, f"Your Telegram user ID is {user_key}. Add this number to TELEGRAM_ADMIN_USER_IDS in the server environment to allow you to bind chats and upload sources.", reply_to)
+                return
+            if command == "chatid":
+                chat_type = str(chat.get("type", "unknown"))
+                send_text(chat_id, f"This chat's ID is {chat_id} (type: {chat_type}). Use this numeric ID for a private group or channel destination.", reply_to)
                 return
             if command == "bind":
                 if not is_authorized(sender):
