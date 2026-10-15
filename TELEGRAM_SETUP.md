@@ -28,7 +28,7 @@ Community Desk can serve Telegram questions through a webhook. Each Telegram cha
    A successful response contains `"ok": true`. You can inspect webhook health with Telegram's `getWebhookInfo` method; never paste its URL/token into a public issue or chat.
 5. Open a private chat with the bot and send `/start`, then `/myid`. Add the numeric ID it returns to Render's `TELEGRAM_ADMIN_USER_IDS`. For multiple admins, separate IDs with commas. Redeploy after changing the value.
 6. Add the bot to a Telegram group (public or private). In the group, connect it to a project by sending `/bind@YourBotUsername project-slug` as a configured admin. Use the slug shown in the dashboard. One group can be bound to one project; another group can be bound to another project.
-7. Any member can ask in the bound group by sending a normal text message; `/ask` remains available too. In a private chat, send the question normally. Answers prioritize the bound project's sources; if they do not answer, configured web search may be used and must be cited separately.
+7. Any member can ask in the bound group by sending a normal text message; `/ask` remains available too. In a private chat, send the question normally. For current news, a short topic by itself (for example, `AxonDAO`) is treated as a request for recent public updates. Answers prioritize the bound project's sources; if they do not answer, configured web search may look for dated official website and publicly accessible social updates, with citations. Private or login-restricted social posts are not accessible through this search path.
 
 ## Auto-post RSS updates to a Telegram channel
 
