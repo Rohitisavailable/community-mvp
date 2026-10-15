@@ -43,3 +43,11 @@ services:
         sync: false
       - key: TELEGRAM_ADMIN_USER_IDS
         sync: false
+      - key: DISCORD_APPLICATION_ID
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_PUBLIC_KEY
+        sync: false
+      - key: COMMUNITY_BOT_API_KEYS
+        sync: false

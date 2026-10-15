@@ -24,6 +24,7 @@ from waitress import serve
 
 from storage import Store
 from telegram_integration import create_telegram_blueprint
+from discord_integration import create_discord_blueprint
 from rss_publisher import fetch_feed, start_rss_scheduler
 
 ROOT = Path(__file__).resolve().parent
@@ -58,6 +59,12 @@ AI_ENABLED = os.getenv("AI_ENABLED", "false" if IS_PRODUCTION else "true").lower
 AI_PROVIDER = os.getenv("AI_PROVIDER", "auto").strip().lower()
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "false").strip().lower() == "true"
 COMMUNITY_BACKBOARD_API_KEY = os.getenv("COMMUNITY_BACKBOARD_API_KEY", "").strip()
+try:
+    COMMUNITY_BOT_API_KEYS = json.loads(os.getenv("COMMUNITY_BOT_API_KEYS", "{}"))
+except json.JSONDecodeError:
+    COMMUNITY_BOT_API_KEYS = {}
+if not isinstance(COMMUNITY_BOT_API_KEYS, dict):
+    COMMUNITY_BOT_API_KEYS = {}
 BACKBOARD_LLM_PROVIDER = os.getenv("BACKBOARD_LLM_PROVIDER", "").strip()
 BACKBOARD_MODEL_NAME = os.getenv("BACKBOARD_MODEL_NAME", "").strip()
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true" if IS_PRODUCTION else "false").lower() == "true"
@@ -481,7 +488,7 @@ def same_origin_and_payload_guard():
                     return json_error("Cross-origin request blocked", 403)
             except ValueError:
                 return json_error("Invalid request origin", 403)
-        elif REQUIRE_ORIGIN and request.path != "/telegram/webhook":
+        elif REQUIRE_ORIGIN and request.path not in {"/telegram/webhook", "/discord/interactions", "/api/v1/ask"}:
             return json_error("Origin header required", 403)
         if request.mimetype != "application/json":
             return json_error("Content-Type must be application/json", 415)
@@ -526,6 +533,16 @@ def telegram_setup():
     return send_from_directory(ROOT, "TELEGRAM_SETUP.md", mimetype="text/markdown")
 
 
+@app.get("/discord/setup")
+def discord_setup():
+    return send_from_directory(ROOT, "DISCORD_SETUP.md", mimetype="text/markdown")
+
+
+@app.get("/platform-api")
+def platform_api_setup():
+    return send_from_directory(ROOT, "PLATFORM_BOT_API.md", mimetype="text/markdown")
+
+
 @app.get("/healthz")
 def healthz():
     try:
@@ -537,6 +554,34 @@ def healthz():
 
 
 app.register_blueprint(create_telegram_blueprint(STORE, project_record, answer_question, fetch_website_source))
+app.register_blueprint(create_discord_blueprint(STORE, project_record, answer_question))
+
+
+@app.post("/api/v1/ask")
+def external_bot_ask():
+    """Authenticated, platform-neutral Q&A endpoint for custom bot adapters."""
+    auth = request.headers.get("Authorization", "")
+    supplied_key = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    slug = next(
+        (str(project).strip() for key, project in COMMUNITY_BOT_API_KEYS.items()
+         if isinstance(key, str) and isinstance(project, str) and hmac.compare_digest(key.encode("utf-8"), supplied_key.encode("utf-8"))),
+        "",
+    )
+    if not slug:
+        return json_error("Invalid bot API credentials", 401)
+    if not project_record(slug):
+        return json_error("The API key is mapped to an unavailable project", 403)
+    payload = request.get_json(silent=True) or {}
+    question = str(payload.get("question", "")).strip()
+    if len(question) < 2 or len(question) > 5000:
+        return json_error("Question must be between 2 and 5,000 characters", 400)
+    integration = re.sub(r"[^a-zA-Z0-9_-]", "", str(payload.get("integration_id", "external")))[:50] or "external"
+    conversation = re.sub(r"[^a-zA-Z0-9_-]", "", str(payload.get("conversation_id", "")))[:100]
+    session_id = f"platform:{integration}:{conversation or secrets.token_urlsafe(12)}"
+    try:
+        return jsonify(answer_question(slug, question, session_id, channel="api"))
+    except ValueError:
+        return json_error("Project not found", 404)
 
 
 @app.get("/api/me")

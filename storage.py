@@ -65,6 +65,7 @@ class Store:
                 db.execute("CREATE INDEX IF NOT EXISTS messages_session_idx ON community_desk.messages(project_slug, session_id, id)")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.backboard_threads (project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, session_id TEXT NOT NULL, thread_id TEXT NOT NULL, PRIMARY KEY(project_slug, session_id))")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.telegram_chats (chat_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, chat_type TEXT NOT NULL, chat_title TEXT NOT NULL DEFAULT '', bound_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+                db.execute("CREATE TABLE IF NOT EXISTS community_desk.discord_guilds (guild_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, bound_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.rss_feeds (id BIGSERIAL PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES community_desk.projects(slug) ON DELETE CASCADE, feed_url TEXT NOT NULL, channel_id TEXT NOT NULL, keywords TEXT NOT NULL DEFAULT '', initialized BOOLEAN NOT NULL DEFAULT FALSE, last_checked_at TIMESTAMPTZ, last_error TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(project_slug,feed_url,channel_id))")
                 db.execute("CREATE TABLE IF NOT EXISTS community_desk.rss_deliveries (feed_id BIGINT NOT NULL REFERENCES community_desk.rss_feeds(id) ON DELETE CASCADE, item_key TEXT NOT NULL, status TEXT NOT NULL, claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(), published_at TIMESTAMPTZ, PRIMARY KEY(feed_id,item_key))")
             return
@@ -72,6 +73,7 @@ class Store:
             db.execute("CREATE TABLE IF NOT EXISTS admins (email TEXT PRIMARY KEY, password_hash TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS projects (slug TEXT PRIMARY KEY, name TEXT NOT NULL, hermes_profile TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             db.execute("CREATE TABLE IF NOT EXISTS telegram_chats (chat_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE, chat_type TEXT NOT NULL, chat_title TEXT NOT NULL DEFAULT '', bound_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+            db.execute("CREATE TABLE IF NOT EXISTS discord_guilds (guild_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE, bound_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             db.execute("CREATE TABLE IF NOT EXISTS rss_feeds (id INTEGER PRIMARY KEY, project_slug TEXT NOT NULL REFERENCES projects(slug) ON DELETE CASCADE, feed_url TEXT NOT NULL, channel_id TEXT NOT NULL, keywords TEXT NOT NULL DEFAULT '', initialized INTEGER NOT NULL DEFAULT 0, last_checked_at TEXT, last_error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(project_slug,feed_url,channel_id))")
             db.execute("CREATE TABLE IF NOT EXISTS rss_deliveries (feed_id INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE, item_key TEXT NOT NULL, status TEXT NOT NULL, claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, published_at TEXT, PRIMARY KEY(feed_id,item_key))")
             existing_projects = db.execute("SELECT slug FROM projects").fetchall()
@@ -139,6 +141,21 @@ class Store:
         marker = "%s" if self.backend == "postgres" else "?"
         with self.connect("dashboard") as db:
             db.execute(f"DELETE FROM {table} WHERE chat_id={marker}", (chat_id,))
+
+    def bind_discord_guild(self, guild_id: str, slug: str, bound_by: str) -> None:
+        if self.backend == "postgres":
+            with self.connect("dashboard") as db:
+                db.execute("INSERT INTO community_desk.discord_guilds(guild_id,project_slug,bound_by) VALUES(%s,%s,%s) ON CONFLICT(guild_id) DO UPDATE SET project_slug=EXCLUDED.project_slug,bound_by=EXCLUDED.bound_by", (guild_id, slug, bound_by))
+            return
+        with self.connect("dashboard") as db:
+            db.execute("INSERT INTO discord_guilds(guild_id,project_slug,bound_by) VALUES(?,?,?) ON CONFLICT(guild_id) DO UPDATE SET project_slug=excluded.project_slug,bound_by=excluded.bound_by", (guild_id, slug, bound_by))
+
+    def discord_project(self, guild_id: str):
+        table = "community_desk.discord_guilds" if self.backend == "postgres" else "discord_guilds"
+        marker = "%s" if self.backend == "postgres" else "?"
+        with self.connect("dashboard") as db:
+            row = db.execute(f"SELECT project_slug FROM {table} WHERE guild_id={marker}", (guild_id,)).fetchone()
+        return dict(row) if row else None
 
     def list_rss_feeds(self, slug: str):
         table = "community_desk.rss_feeds" if self.backend == "postgres" else "rss_feeds"

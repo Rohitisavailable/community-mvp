@@ -133,7 +133,7 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
             "Admin setup: send /myid to get your Telegram user ID.\n"
             "Chat setup: send /chatid to get this chat's ID (useful for private groups).\n"
             "Admin setup: /bind project-slug\n"
-            "Ask in a group: choose /ask from the command menu and reply to the prompt, or send /ask your question in one message.\n"
+            "Ask in a group: send your question as a normal message, or use /ask.\n"
             "Ask in a private chat: send your question normally or use /ask your question.\n"
             "Add a source: /source https://example.com/page\n"
             "Add a .txt or .md file: send it as a document.\n"
@@ -266,9 +266,9 @@ def create_telegram_blueprint(store, project_record, answer_question, fetch_webs
                         pending_asks.pop(pending_key, None)
                         question = text
                 if not question:
-                    if str(chat.get("type", "")) in {"group", "supergroup"}:
-                        # Do not answer unrelated group conversation.
-                        return
+                    # In connected chats, ordinary text is a question too. In
+                    # groups Telegram only delivers this text when the bot is
+                    # an admin or group privacy mode is disabled.
                     question = text
             if len(question) < 2:
                 send_text(chat_id, "Please include a question.", reply_to)

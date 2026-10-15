@@ -9,7 +9,9 @@ A local-first prototype for Admin login, project-scoped text knowledge, and a He
 - `.txt` and `.md` uploads, stored and indexed only in the selected project's database.
 - A project-aware chat. Retrieval always stays inside the selected project's database. Generation can use Backboard, the project Hermes profile, or Ollama; Backboard can also use its optional web-search fallback when project sources do not answer.
 - Optional Backboard web search, enabled with `WEB_SEARCH_ENABLED=true`. The model is instructed to prefer project evidence and label web answers with direct URLs. Web search adds latency; check Backboard/provider billing before enabling it.
-- Optional Telegram webhook integration: bind each group/private chat to one project, answer grounded questions with a typing indicator, and let configured admins add `.txt`/`.md` files or explicit HTTPS pages. Admins can also connect RSS/Atom feeds to Telegram channels; new feed entries are posted with optional keyword filters and duplicate protection.
+- Optional Telegram webhook integration: bind each group/private chat to one project, answer ordinary text messages or `/ask` questions with a typing indicator, and let configured admins add `.txt`/`.md` files or explicit HTTPS pages. Admins can also connect RSS/Atom feeds to Telegram channels; new feed entries are posted with optional keyword filters and duplicate protection.
+- Discord application commands: bind a Discord server to one project with `/bind`, then allow any server member to ask that project's imported sources with `/ask`.
+- Platform-neutral authenticated answer API at `POST /api/v1/ask` for adapters to connect other chat platforms to a project without exposing project data publicly.
 - An MCP search tool with a fixed database path per Hermes profile. The default profile's example config is bound to Project A; the separate Project B profile config is bound to Project B.
 
 Local development uses SQLite and your existing local Hermes/Ollama setup. Hosted mode uses Supabase Postgres for persistent project data and Waitress to serve the Flask app. The hosted prototype is Admin-only; it does not expose project answers to anonymous visitors.
@@ -91,6 +93,10 @@ The default profile's existing Telegram token/chat configuration is not copied o
 ## Run the Community Desk Telegram bot
 
 For a webhook-backed Telegram bot that uses the hosted project's source store (rather than the local Hermes MCP profile), see [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md). It supports multiple project-bound chats, source upload/link commands, group-safe `/ask` messages, and RSS/Atom auto-posting to channels. A linked discussion group is required for channel-audience questions; channels themselves are broadcast-only in this MVP.
+
+## Connect Discord or another chat platform
+
+Follow [DISCORD_SETUP.md](DISCORD_SETUP.md) to add Community Desk slash commands to a Discord server. For a custom bot adapter on another platform, use the authenticated endpoint described in [PLATFORM_BOT_API.md](PLATFORM_BOT_API.md). Each integration is scoped to one project and must keep its API key server-side.
 
 ## Connect a separate Hermes profile to Project B
 
